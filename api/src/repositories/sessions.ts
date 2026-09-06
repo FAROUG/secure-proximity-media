@@ -2,6 +2,20 @@ import crypto from "crypto";
 
 import { redis } from "./presence.js";
 
+
+/*
+
+/*
+ * --------------------------------------------------
+ * SESSION DATA
+ * --------------------------------------------------
+ */
+
+ * --------------------------------------------------
+ * SESSION CONFIGURATION
+ * --------------------------------------------------
+ */
+
 const SESSION_TTL_SECONDS = 3600;
 
 export interface VerifiedSession {
