@@ -551,24 +551,27 @@ app.post(
       const {
         shareId
       } = req.params;
-
-      const {
-        userId
-      } = req.body;
-
       /*
-       * Validate user ID.
-       *
-       * NOTE:
-       * This will be replaced by Cognito
-       * in Step 4.
-       */
-      if (!userId) {
-        return res.status(400).json({
-          error:
-            "userId is required"
+      * Get verified identity from session.
+      */
+      const session =
+        await getVerifiedUser(
+          req,
+          shareId
+        );
+
+
+      if (!session) {
+
+        return res.status(401).json({
+          allowed: false,
+          reason:
+            "Valid verification session is required"
         });
       }
+
+    const userId =
+      session.userId;
 
       /*
        * Find recipient policy in PostgreSQL.
