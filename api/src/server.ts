@@ -2,6 +2,8 @@ import "dotenv/config";
 
 import express from "express";
 import cors from "cors";
+import https from "https";
+import fs from "fs";
 
 import {
   getRecipientAccess
@@ -507,13 +509,21 @@ async function start() {
    */
   await connectRedis();
 
-  app.listen(
+  const httpsOptions = {
+    key: fs.readFileSync("../web/certs/localhost-key.pem"),
+    cert: fs.readFileSync("../web/certs/localhost.pem"),
+  };
+
+  https.createServer(
+    httpsOptions,
+    app
+  ).listen(
     4000,
   "0.0.0.0",
     () => {
 
       console.log(
-        "Secure Media API running on http://0.0.0.0:4000"
+        "Secure Media API running on https://0.0.0.0:4000"
       );
 
     }
