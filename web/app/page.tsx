@@ -40,6 +40,13 @@ export default function Home() {
 
   const [result, setResult] =
     useState<AccessResult | null>(null);
+  
+  const [isSecureContext, setIsSecureContext] = 
+    useState<boolean | null>(null);
+
+  useEffect(() => {
+    setIsSecureContext(window.isSecureContext);
+  }, []);
 
   const [error, setError] =
     useState<string | null>(null);
