@@ -4,13 +4,6 @@ import { redis } from "./presence.js";
 
 
 /*
-
-/*
- * --------------------------------------------------
- * SESSION DATA
- * --------------------------------------------------
- */
-
  * --------------------------------------------------
  * SESSION CONFIGURATION
  * --------------------------------------------------
@@ -18,11 +11,25 @@ import { redis } from "./presence.js";
 
 const SESSION_TTL_SECONDS = 3600;
 
+
+/*
+ * --------------------------------------------------
+ * SESSION DATA
+ * --------------------------------------------------
+ */
+
 export interface VerifiedSession {
   userId: string;
   shareId: string;
   createdAt: number;
 }
+
+
+/*
+ * --------------------------------------------------
+ * REDIS KEY
+ * --------------------------------------------------
+ */
 
 function sessionKey(
   sessionId: string
@@ -30,12 +37,27 @@ function sessionKey(
   return `session:${sessionId}`;
 }
 
+
+/*
+ * --------------------------------------------------
+ * CREATE SESSION
+ * --------------------------------------------------
+ */
+
 export async function createSession(
   userId: string,
   shareId: string
 ) {
+
+  /*
+   * Generate a cryptographically
+   * secure session token.
+   */
   const sessionId =
-    crypto.randomBytes(32).toString("hex");
+    crypto
+      .randomBytes(32)
+      .toString("hex");
+
 
   const session: VerifiedSession = {
     userId,
@@ -43,6 +65,11 @@ export async function createSession(
     createdAt: Date.now()
   };
 
+
+  /*
+   * Store the verified identity
+   * in Redis.
+   */
   await redis.set(
     sessionKey(sessionId),
     JSON.stringify(session),
@@ -56,6 +83,13 @@ export async function createSession(
     expiresIn: SESSION_TTL_SECONDS
   };
 }
+
+
+/*
+ * --------------------------------------------------
+ * GET SESSION
+ * --------------------------------------------------
+ */
 
 export async function getSession(
   sessionId: string
@@ -71,6 +105,13 @@ export async function getSession(
 
   return JSON.parse(value);
 }
+
+
+/*
+ * --------------------------------------------------
+ * DELETE SESSION
+ * --------------------------------------------------
+ */
 
 export async function deleteSession(
   sessionId: string
