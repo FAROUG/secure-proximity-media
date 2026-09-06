@@ -32,6 +32,10 @@ import {
   createSession
 } from "./repositories/sessions.js";
 
+import {
+  getVerifiedUser
+} from "./authentication.js";
+
 const app = express();
 
 app.use(
