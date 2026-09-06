@@ -17,6 +17,10 @@ import {
   authorize
 } from "./authorization.js";
 
+import {
+  createVerificationCode
+} from "./repositories/verification.js";
+
 const app = express();
 
 app.use(
