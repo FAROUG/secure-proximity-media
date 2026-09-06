@@ -380,34 +380,63 @@ app.post(
  * PRESENCE
  * --------------------------------------------------
  *
- * Stores a user's current location in Redis.
+ * Stores the VERIFIED user's current
+ * location in Redis.
  *
- * IMPORTANT:
- * This endpoint currently accepts userId
- * directly from the request.
+ * The browser no longer sends userId.
  *
- * This is ONLY for our MVP testing.
+ * Identity comes from:
  *
- * Step 4 will replace this with Cognito
- * authentication so the backend determines
- * the user identity from a verified token.
+ * x-session-id
+ *       ↓
+ * Redis session
+ *       ↓
+ * verified userId
  */
 app.post(
-  "/shares/:shareId/presence/:userId",
+  "/shares/:shareId/presence",
   async (req, res) => {
 
     try {
 
       const {
-        shareId,
-        userId
+        shareId
       } = req.params;
+
+      /*
+       * --------------------------------------------------
+       * AUTHENTICATE VERIFIED SESSION
+       * --------------------------------------------------
+       */
+
+      const session =
+        await getVerifiedUser(
+          req,
+          shareId
+        );
+
+
+      if (!session) {
+
+        return res.status(401).json({
+          error:
+            "Valid verification session is required"
+        });
+      }
+
+
+      /*
+       * --------------------------------------------------
+       * LOCATION DATA
+       * --------------------------------------------------
+       */
 
       const {
         latitude,
         longitude,
         accuracy
       } = req.body;
+
 
       /*
        * Validate coordinates.
@@ -417,45 +446,64 @@ app.post(
         typeof longitude !== "number" ||
         typeof accuracy !== "number"
       ) {
+
         return res.status(400).json({
-          error: "Invalid location"
+          error:
+            "Invalid location"
         });
       }
 
+
       /*
-       * Basic coordinate validation.
+       * Latitude validation.
        */
       if (
         latitude < -90 ||
         latitude > 90
       ) {
+
         return res.status(400).json({
-          error: "Invalid latitude"
+          error:
+            "Invalid latitude"
         });
       }
 
+
+      /*
+       * Longitude validation.
+       */
       if (
         longitude < -180 ||
         longitude > 180
       ) {
+
         return res.status(400).json({
-          error: "Invalid longitude"
+          error:
+            "Invalid longitude"
         });
       }
 
-      if (accuracy < 0) {
-        return res.status(400).json({
-          error: "Invalid accuracy"
-        });
-      }
 
       /*
-       * Store location in Redis.
-       *
-       * TTL = 30 seconds.
+       * Accuracy validation.
+       */
+      if (
+        accuracy < 0
+      ) {
+
+        return res.status(400).json({
+          error:
+            "Invalid accuracy"
+        });
+      }
+
+
+      /*
+       * Store presence using the
+       * VERIFIED user identity.
        */
       await setPresence(
-        userId,
+        session.userId,
         shareId,
         {
           latitude,
@@ -463,9 +511,9 @@ app.post(
           accuracy,
           timestamp: Date.now()
         },
-        // 30
         120
       );
+
 
       return res.json({
         success: true,
@@ -483,6 +531,7 @@ app.post(
         error:
           "Failed to update presence"
       });
+
     }
   }
 );
