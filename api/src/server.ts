@@ -6,6 +6,10 @@ import https from "https";
 import fs from "fs";
 
 import {
+  query
+} from "./db.js";
+
+import {
   getRecipientAccess
 } from "./repositories/shares.js";
 
