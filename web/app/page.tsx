@@ -404,6 +404,26 @@ export default function Home() {
         authorization
       </p>
 
+      <p
+        style={{
+          fontSize: 13,
+          color: "#777",
+          marginTop: 8,
+        }}
+        >
+        {/* Secure context:{" "}
+        {typeof window !== "undefined" &&
+        window.isSecureContext
+          ? "Yes"
+          : "No"} */}
+        Secure context:{" "}
+        {isSecureContext === null
+          ? "Checking..."
+          : isSecureContext
+          ? "Yes"
+          : "No"}
+      </p>
+
       {/* USER */}
 
       <section
