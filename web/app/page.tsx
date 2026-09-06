@@ -236,6 +236,7 @@ export default function Home() {
    */
   function startTracking() {
     setError(null);
+    setResult(null);
 
     if (!navigator.geolocation) {
       setError(
@@ -245,23 +246,17 @@ export default function Home() {
       return;
     }
 
+    if (watchId.current !== null) {
+      return;
+    }
+
     setTracking(true);
 
     /*
-     * Get the location immediately.
-     */
-    navigator.geolocation.getCurrentPosition(
-      handlePosition,
-      handleLocationError,
-      {
-        enableHighAccuracy: true,
-        maximumAge: 5000,
-        timeout: 15000,
-      }
-    );
-
-    /*
-     * Continue watching the device.
+     * Start continuous GPS tracking.
+     *
+     * watchPosition() will provide the
+     * initial position and subsequent updates.
      */
     watchId.current =
       navigator.geolocation.watchPosition(
@@ -275,17 +270,14 @@ export default function Home() {
       );
 
     /*
-     * Also send a heartbeat every 10 seconds.
-     *
-     * This is important because the Redis
-     * presence record expires.
+     * Renew Redis presence every 10 seconds.
      */
     heartbeatId.current =
       setInterval(() => {
         setLocation(
           (currentLocation) => {
             if (currentLocation) {
-              sendPresence(
+              void sendPresence(
                 currentLocation
               );
             }
