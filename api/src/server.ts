@@ -42,7 +42,136 @@ app.get(
     });
   }
 );
+/*
+ * --------------------------------------------------
+ * EMAIL VERIFICATION - REQUEST CODE
+ * --------------------------------------------------
+ */
+app.post(
+  "/share/:shareId/verify/request",
+  async (req, res) => {
+    try {
+      const {
+        shareId
+      } = req.params;
 
+      const {
+        email
+      } = req.body;
+
+      if (
+        typeof email !== "string" ||
+        !email.trim()
+      ) {
+        return res.status(400).json({
+          error:
+            "Email is required"
+        });
+      }
+
+      const normalizedEmail =
+        email
+          .trim()
+          .toLowerCase();
+
+      const result =
+        await query<{
+          user_id: string;
+          email: string;
+        }>(
+          `
+          SELECT
+            u.id AS user_id,
+            u.email
+          FROM users u
+          INNER JOIN share_recipients sr
+            ON sr.user_id = u.id
+          WHERE
+            sr.share_id = $1
+            AND sr.status = 'ACTIVE'
+            AND LOWER(u.email) = $2
+          LIMIT 1
+          `,
+          [
+            shareId,
+            normalizedEmail
+          ]
+        );
+
+      const recipient =
+        result.rows[0];
+
+      /*
+       * Do not reveal whether an email
+       * is registered for the share.
+       */
+      if (!recipient) {
+        return res.status(200).json({
+          success: true,
+          message:
+            "If this email is authorized, a verification code has been sent."
+        });
+      }
+
+      const verification =
+        await createVerificationCode(
+          shareId,
+          recipient.user_id
+        );
+
+      /*
+       * LOCAL DEVELOPMENT ONLY
+       *
+       * Production will send this
+       * through Amazon SES.
+       */
+      console.log(
+        "========================================"
+      );
+
+      console.log(
+        "EMAIL VERIFICATION CODE"
+      );
+
+      console.log(
+        `Share ID: ${shareId}`
+      );
+
+      console.log(
+        `Email: ${recipient.email}`
+      );
+
+      console.log(
+        `Code: ${verification.code}`
+      );
+
+      console.log(
+        `Expires: ${verification.expiresAt.toISOString()}`
+      );
+
+      console.log(
+        "========================================"
+      );
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "If this email is authorized, a verification code has been sent."
+      });
+
+    } catch (error) {
+      console.error(
+        "Verification request error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to request verification code"
+      });
+    }
+  }
+);
 
 /*
  * --------------------------------------------------
