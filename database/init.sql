@@ -33,6 +33,17 @@ CREATE TABLE IF NOT EXISTS share_recipients (
     max_location_age_seconds INTEGER DEFAULT 30,
     status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE'
 );
+CREATE TABLE IF NOT EXISTS email_verification_codes (
+    id UUID PRIMARY KEY,
+    share_id UUID NOT NULL REFERENCES shares(id),
+    user_id UUID NOT NULL REFERENCES users(id),
+    code_hash VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    verified_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 
 CREATE TABLE IF NOT EXISTS access_logs (
     id UUID PRIMARY KEY,
@@ -53,6 +64,12 @@ CREATE INDEX IF NOT EXISTS idx_share_recipients_share_id
 CREATE INDEX IF NOT EXISTS idx_share_recipients_user_id
     ON share_recipients(user_id);
 
+CREATE INDEX IF NOT EXISTS idx_email_verification_codes_share_user
+    ON email_verification_codes(share_id, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_email_verification_codes_expires_at
+    ON email_verification_codes(expires_at);
+    
 CREATE INDEX IF NOT EXISTS idx_access_logs_share_id
     ON access_logs(share_id);
 
