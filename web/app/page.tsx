@@ -156,81 +156,39 @@ export default function Home() {
     sendPresence(currentLocation);
   }
 
-  // function handleLocationError(
-  //   error: GeolocationPositionError
-  // ) {
-  //   console.error(
-  //     "Geolocation error:",
-  //     error
-  //   );
-
-  //   let message =
-  //     "Unable to get your location.";
-
-  //   switch (error.code) {
-  //     case error.PERMISSION_DENIED:
-  //       message =
-  //         "Location permission was denied. Please allow location access in your browser.";
-  //       break;
-
-  //     case error.POSITION_UNAVAILABLE:
-  //       message =
-  //         "Your current location is unavailable.";
-  //       break;
-
-  //     case error.TIMEOUT:
-  //       message =
-  //         "The request to get your location timed out.";
-  //       break;
-  //   }
-
-  //   setError(message);
-  // }
   function handleLocationError(
   gpsError: GeolocationPositionError
 ) {
   console.error("Geolocation error:", {
     code: gpsError.code,
     message: gpsError.message,
-    PERMISSION_DENIED:
-      gpsError.PERMISSION_DENIED,
-    POSITION_UNAVAILABLE:
-      gpsError.POSITION_UNAVAILABLE,
-    TIMEOUT:
-      gpsError.TIMEOUT,
   });
 
-  let message =
-    "Unable to get your current location.";
-
   switch (gpsError.code) {
-    case gpsError.PERMISSION_DENIED:
-      message =
-        "Location permission was denied. Please allow location access for this website in your browser and device settings.";
-      break;
-    // case gpsError.PERMISSION_DENIED:
-    //   message =
-    //     "Location permission was denied. Please allow location access for this website in your phone settings.";
-    //   break;
-
-    case gpsError.POSITION_UNAVAILABLE:
-      message =
-        "Your phone could not determine its current location. Make sure Location Services/GPS is enabled.";
+    case 1:
+      setError(
+        "Location permission is blocked for this website. Please change the browser's Location permission from Block to Allow."
+      );
       break;
 
-    case gpsError.TIMEOUT:
-      message =
-        "Getting your location timed out. Please try again.";
+    case 2:
+      setError(
+        "The browser could not determine your location. Check that Location Services/GPS is enabled."
+      );
+      break;
+
+    case 3:
+      setError(
+        "Getting your location timed out. Please try again."
+      );
       break;
 
     default:
-      message =
-        `Unable to get your location. GPS error code: ${gpsError.code}.`;
+      setError(
+        `Unable to get your location. GPS error code: ${gpsError.code}.`
+      );
   }
-
-  setError(message);
 }
-
   /*
    * Start continuous GPS tracking.
    */
