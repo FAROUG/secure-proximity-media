@@ -24,8 +24,13 @@ import {
 } from "./authorization.js";
 
 import {
-  createVerificationCode
+  createVerificationCode,
+  verifyCode
 } from "./repositories/verification.js";
+
+import {
+  createSession
+} from "./repositories/sessions.js";
 
 const app = express();
 
@@ -178,7 +183,194 @@ app.post(
     }
   }
 );
+/*
+ * --------------------------------------------------
+ * EMAIL VERIFICATION - CONFIRM CODE
+ * --------------------------------------------------
+ */
+app.post(
+  "/share/:shareId/verify/confirm",
+  async (req, res) => {
 
+    try {
+
+      const {
+        shareId
+      } = req.params;
+
+      const {
+        email,
+        code
+      } = req.body;
+
+
+      /*
+       * --------------------------------------------------
+       * VALIDATE REQUEST
+       * --------------------------------------------------
+       */
+
+      if (
+        typeof email !== "string" ||
+        !email.trim()
+      ) {
+
+        return res.status(400).json({
+          error:
+            "Email is required"
+        });
+      }
+
+
+      if (
+        typeof code !== "string" ||
+        !/^\d{6}$/.test(code)
+      ) {
+
+        return res.status(400).json({
+          error:
+            "A valid 6-digit verification code is required"
+        });
+      }
+
+
+      const normalizedEmail =
+        email
+          .trim()
+          .toLowerCase();
+
+
+      /*
+       * --------------------------------------------------
+       * FIND AUTHORIZED RECIPIENT
+       * --------------------------------------------------
+       *
+       * We deliberately verify that:
+       *
+       * 1. The user exists.
+       * 2. The user is an ACTIVE recipient
+       *    of THIS share.
+       *
+       * A valid code for another share
+       * cannot be used here.
+       */
+      const userResult =
+        await query<{
+          user_id: string;
+        }>(
+          `
+          SELECT
+            u.id AS user_id
+          FROM users u
+          INNER JOIN share_recipients sr
+            ON sr.user_id = u.id
+          WHERE
+            sr.share_id = $1
+            AND sr.status = 'ACTIVE'
+            AND LOWER(u.email) = $2
+          LIMIT 1
+          `,
+          [
+            shareId,
+            normalizedEmail
+          ]
+        );
+
+
+      const recipient =
+        userResult.rows[0];
+
+
+      /*
+       * Do not reveal whether the email
+       * is authorized.
+       */
+      if (!recipient) {
+
+        return res.status(403).json({
+          verified: false,
+          error:
+            "Verification failed"
+        });
+      }
+
+
+      /*
+       * --------------------------------------------------
+       * VERIFY THE CODE
+       * --------------------------------------------------
+       */
+
+      const verification =
+        await verifyCode(
+          shareId,
+          recipient.user_id,
+          code
+        );
+
+
+      if (!verification.verified) {
+
+        return res.status(403).json({
+          verified: false,
+          reason:
+            verification.reason
+        });
+      }
+
+
+      /*
+       * --------------------------------------------------
+       * CREATE VERIFIED SESSION
+       * --------------------------------------------------
+       */
+
+      const session =
+        await createSession(
+          recipient.user_id,
+          shareId
+        );
+
+
+      /*
+       * --------------------------------------------------
+       * SUCCESS
+       * --------------------------------------------------
+       *
+       * The frontend will temporarily
+       * store this token during the MVP.
+       *
+       * Later we will move this to
+       * a Secure + HttpOnly cookie.
+       */
+      return res.status(200).json({
+
+        verified: true,
+
+        sessionId:
+          session.sessionId,
+
+        expiresIn:
+          session.expiresIn
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "Verification confirmation error:",
+        error
+      );
+
+      return res.status(500).json({
+        verified: false,
+        error:
+          "Verification failed"
+      });
+
+    }
+  }
+);
 /*
  * --------------------------------------------------
  * PRESENCE
