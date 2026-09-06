@@ -10,7 +10,9 @@ export const pool = new Pool({
   password: process.env.DB_PASSWORD ?? "secure_media_password",
 });
 
-export async function query<T = any>(
+export async function query<
+  T extends pg.QueryResultRow = any
+>(
   text: string,
   params: any[] = []
 ): Promise<pg.QueryResult<T>> {
