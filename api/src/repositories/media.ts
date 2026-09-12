@@ -54,3 +54,38 @@ export async function getMediaById(
 
   return result.rows[0] ?? null;
 }
+export interface ShareMedia {
+  media_id: string;
+  owner_id: string;
+  filename: string;
+  storage_key: string | null;
+  media_type: string;
+}
+
+export async function getShareMedia(
+  shareId: string
+): Promise<ShareMedia | null> {
+  const result =
+    await query<ShareMedia>(
+      `
+      SELECT
+        m.id AS media_id,
+        m.owner_id,
+        m.filename,
+        m.storage_key,
+        m.media_type
+      FROM shares s
+      INNER JOIN media m
+        ON m.id = s.media_id
+      WHERE
+        s.id = $1
+        AND s.status = 'ACTIVE'
+      LIMIT 1
+      `,
+      [
+        shareId
+      ]
+    );
+
+  return result.rows[0] ?? null;
+}
