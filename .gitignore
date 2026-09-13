@@ -2,3 +2,18 @@
 node_modules
 dist
 certs/
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform.lock.hcl
+
+# Terraform local values
+*.tfvars
+!*.example.tfvars
+
+# CloudFront signing keys
+cloudfront-keys/
+*.pem
