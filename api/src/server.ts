@@ -14,8 +14,8 @@ import {
 } from "./repositories/shares.js";
 
 import {
-  createMediaSignedUrl
-} from "./storage/s3.js";
+  createSignedHlsManifest
+} from "./storage/hls.js";
 
 import {
   getShareMedia
@@ -46,6 +46,27 @@ import {
 
 
 const app = express();
+
+
+/*
+ * --------------------------------------------------
+ * TEMPORARY HLS TEST CONFIGURATION
+ * --------------------------------------------------
+ *
+ * For the current HLS test we are using one
+ * manually generated HLS package.
+ *
+ * Later this will NOT be hardcoded.
+ *
+ * The upload/transcoding pipeline will store:
+ *
+ * media.storage_key =
+ * media/<media-id>/hls/master.m3u8
+ *
+ * and we will use media.storage_key directly.
+ */
+const TEST_HLS_MANIFEST_KEY =
+  "demo/hls/test-video/master.m3u8";
 
 
 app.use(
@@ -551,7 +572,7 @@ app.post(
  * This endpoint ONLY answers whether
  * the current verified user is allowed.
  *
- * It does not return media or S3 URLs.
+ * It does not return media.
  */
 app.post(
   "/share/:shareId/access",
@@ -635,7 +656,6 @@ app.post(
        * PROXIMITY ACCESS
        * --------------------------------------------------
        */
-
       const viewer =
         await getPresence(
           userId,
@@ -754,9 +774,20 @@ app.post(
  *
  * 1. Verifies the session.
  * 2. Checks recipient policy.
- * 3. Performs proximity authorization.
- * 4. Fetches media metadata.
- * 5. Generates a short-lived S3 URL.
+ * 3. Performs proximity authorization if required.
+ * 4. Confirms the share has valid media.
+ * 5. Reads the private HLS manifest from S3.
+ * 6. Rewrites HLS segment references with
+ *    short-lived CloudFront signed URLs.
+ * 7. Returns the protected HLS manifest.
+ *
+ * TEMPORARY:
+ *
+ * The HLS manifest S3 key is currently hardcoded.
+ *
+ * Later TEST_HLS_MANIFEST_KEY will be replaced by:
+ *
+ * media.storage_key
  */
 app.get(
   "/share/:shareId/media",
@@ -821,6 +852,32 @@ app.get(
 
       /*
        * --------------------------------------------------
+       * FETCH SHARE MEDIA
+       * --------------------------------------------------
+       *
+       * Even though the HLS key is temporarily
+       * hardcoded, we still validate that this
+       * share references valid media.
+       */
+      const media =
+        await getShareMedia(
+          shareId
+        );
+
+
+      if (!media) {
+
+        return res.status(404).json({
+          allowed: false,
+          reason:
+            "Media not found"
+        });
+
+      }
+
+
+      /*
+       * --------------------------------------------------
        * UNRESTRICTED RECIPIENT
        * --------------------------------------------------
        */
@@ -829,64 +886,31 @@ app.get(
         "UNRESTRICTED"
       ) {
 
-        const media =
-          await getShareMedia(
-            shareId
+        const signedManifest =
+          await createSignedHlsManifest(
+            TEST_HLS_MANIFEST_KEY,
+            90
           );
 
 
-        if (!media) {
-
-          return res.status(404).json({
-            allowed: false,
-            reason:
-              "Media not found"
-          });
-
-        }
-
-
-        if (!media.storage_key) {
-
-          return res.status(404).json({
-            allowed: false,
-            reason:
-              "Media storage key is missing"
-          });
-
-        }
+        /*
+         * Do not cache an authorization-dependent
+         * playlist in the browser or an intermediary.
+         */
+        res.setHeader(
+          "Cache-Control",
+          "private, no-store, max-age=0"
+        );
 
 
-        const mediaUrl =
-          await createMediaSignedUrl(
-            media.storage_key
+        return res
+          .status(200)
+          .type(
+            "application/vnd.apple.mpegurl"
+          )
+          .send(
+            signedManifest
           );
-
-
-        return res.json({
-
-          allowed: true,
-
-          reason:
-            "Unrestricted access",
-
-          media: {
-
-            id:
-              media.media_id,
-
-            filename:
-              media.filename,
-
-            mediaType:
-              media.media_type,
-
-            url:
-              mediaUrl
-
-          }
-
-        });
 
       }
 
@@ -985,75 +1009,41 @@ app.get(
 
       /*
        * --------------------------------------------------
-       * FETCH MEDIA
+       * CREATE PROTECTED HLS MANIFEST
        * --------------------------------------------------
+       *
+       * Each .ts segment inside the returned manifest
+       * receives a short-lived CloudFront signed URL.
+       *
+       * Current test key:
+       *
+       * demo/hls/test-video/master.m3u8
+       *
+       * Later:
+       *
+       * media.storage_key
        */
-      const media =
-        await getShareMedia(
-          shareId
+      const signedManifest =
+        await createSignedHlsManifest(
+          TEST_HLS_MANIFEST_KEY,
+          90
         );
 
 
-      if (!media) {
-
-        return res.status(404).json({
-          allowed: false,
-          reason:
-            "Media not found"
-        });
-
-      }
+      res.setHeader(
+        "Cache-Control",
+        "private, no-store, max-age=0"
+      );
 
 
-      if (!media.storage_key) {
-
-        return res.status(404).json({
-          allowed: false,
-          reason:
-            "Media storage key is missing"
-        });
-
-      }
-
-
-      /*
-       * --------------------------------------------------
-       * CREATE SHORT-LIVED S3 URL
-       * --------------------------------------------------
-       */
-      const mediaUrl =
-        await createMediaSignedUrl(
-          media.storage_key
+      return res
+        .status(200)
+        .type(
+          "application/vnd.apple.mpegurl"
+        )
+        .send(
+          signedManifest
         );
-
-
-      return res.json({
-
-        allowed: true,
-
-        reason:
-          authorizationResult.reason,
-
-        distanceMeters:
-          authorizationResult.distanceMeters,
-
-        media: {
-
-          id:
-            media.media_id,
-
-          filename:
-            media.filename,
-
-          mediaType:
-            media.media_type,
-
-          url:
-            mediaUrl
-
-        }
-
-      });
 
     } catch (error) {
 
@@ -1123,7 +1113,7 @@ async function start() {
         );
 
         console.log(
-          "  - Network: https://192.168.1.70:4000"
+          "  - Network: https://MacBook-Pro.local:4000"
         );
 
       }
