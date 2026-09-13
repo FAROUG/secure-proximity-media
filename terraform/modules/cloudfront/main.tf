@@ -25,6 +25,11 @@ data "aws_cloudfront_cache_policy" "caching_optimized" {
 }
 
 
+data "aws_cloudfront_response_headers_policy" "cors" {
+  name = "Managed-SimpleCORS"
+}
+
+
 resource "aws_cloudfront_distribution" "media" {
   enabled     = var.enabled
   comment     = var.comment
@@ -52,6 +57,8 @@ resource "aws_cloudfront_distribution" "media" {
     viewer_protocol_policy = "redirect-to-https"
 
     cache_policy_id = data.aws_cloudfront_cache_policy.caching_optimized.id
+
+    response_headers_policy_id = data.aws_cloudfront_response_headers_policy.cors.id
 
     trusted_key_groups = [
       var.trusted_key_group_id
