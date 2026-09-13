@@ -23,6 +23,20 @@ interface AccessResult {
   distanceMeters?: number;
 }
 
+interface ProtectedMedia {
+  id: string;
+  filename: string;
+  mediaType: string;
+  url: string;
+}
+
+interface MediaResponse {
+  allowed: boolean;
+  reason?: string;
+  distanceMeters?: number;
+  media?: ProtectedMedia;
+}
+
 type VerificationStep =
   | "email"
   | "code"
@@ -63,6 +77,12 @@ export default function Home() {
 
   const [result, setResult] =
     useState<AccessResult | null>(null);
+
+  const [media, setMedia] =
+    useState<ProtectedMedia | null>(null);
+
+  const [mediaLoading, setMediaLoading] =
+    useState(false);
 
   const [isSecureContext, setIsSecureContext] =
     useState<boolean | null>(null);
@@ -721,6 +741,10 @@ export default function Home() {
       null
     );
 
+    setMedia(
+      null
+    );
+
 
     try {
 
@@ -797,6 +821,130 @@ export default function Home() {
   }
 
 
+/*
+   * --------------------------------------------------
+   * LOAD MEDIA
+   * --------------------------------------------------
+   */
+
+async function loadMedia() {
+
+  if (!sessionId) {
+
+    setError(
+      "Please verify your email before loading media."
+    );
+
+    return;
+
+  }
+
+
+  setMediaLoading(true);
+  setError(null);
+  setMedia(null);
+
+
+  try {
+
+    const response =
+      await fetch(
+        `${API_URL}/share/${SHARE_ID}/media`,
+        {
+          method:
+            "GET",
+
+          headers: {
+
+            "x-session-id":
+              sessionId,
+
+          },
+
+        }
+      );
+
+
+    const data: MediaResponse =
+      await response.json();
+
+
+    /*
+     * Session expired.
+     */
+    if (
+      response.status === 401
+    ) {
+
+      sessionStorage.removeItem(
+        `secure-media-session-${SHARE_ID}`
+      );
+
+      setSessionId(
+        null
+      );
+
+      setVerificationStep(
+        "email"
+      );
+
+      stopTracking();
+
+      throw new Error(
+        data.reason ??
+        "Your session has expired"
+      );
+
+    }
+
+
+    if (
+      !response.ok ||
+      !data.allowed
+    ) {
+
+      throw new Error(
+        data.reason ??
+        "Media access denied"
+      );
+
+    }
+
+
+    if (!data.media) {
+
+      throw new Error(
+        "Media information was not returned"
+      );
+
+    }
+
+
+    setMedia(
+      data.media
+    );
+
+
+  } catch (err) {
+
+    setError(
+      err instanceof Error
+        ? err.message
+        : "Failed to load media"
+    );
+
+
+  } finally {
+
+    setMediaLoading(
+      false
+    );
+
+  }
+
+}
+
+
   /*
    * --------------------------------------------------
    * CHANGE EMAIL / LOG OUT
@@ -830,6 +978,10 @@ export default function Home() {
     );
 
     setResult(
+      null
+    );
+
+    setMedia(
       null
     );
 
@@ -1603,6 +1755,47 @@ export default function Home() {
 
         </button>
 
+        {result?.allowed && (
+
+          <button
+
+            onClick={
+              loadMedia
+            }
+
+            disabled={
+              mediaLoading ||
+              !sessionId
+            }
+
+            style={{
+
+              padding:
+                "12px 20px",
+
+              fontSize:
+                16,
+
+              marginLeft:
+                10,
+
+              cursor:
+                mediaLoading
+                  ? "not-allowed"
+                  : "pointer",
+
+            }}
+
+          >
+
+            {mediaLoading
+              ? "Loading Media..."
+              : "Open Protected Media"}
+
+          </button>
+
+        )}
+
       </section>
 
 
@@ -1704,6 +1897,140 @@ export default function Home() {
               )}{" "}
 
               meters
+
+            </p>
+
+          )}
+
+        </section>
+
+      )}
+
+
+      {/* PROTECTED MEDIA */}
+
+      {media && (
+
+        <section
+          style={{
+
+            padding:
+              20,
+
+            marginTop:
+              20,
+
+            border:
+              "1px solid #ddd",
+
+            borderRadius:
+              8,
+
+          }}
+        >
+
+          <h2>
+            🔒 Protected Media
+          </h2>
+
+
+          <p>
+
+            <strong>
+              File:
+            </strong>{" "}
+
+            {media.filename}
+
+          </p>
+
+
+          <p>
+
+            <strong>
+              Type:
+            </strong>{" "}
+
+            {media.mediaType}
+
+          </p>
+
+
+          {media.mediaType.startsWith(
+            "video/"
+          ) && (
+
+            <video
+
+              src={
+                media.url
+              }
+
+              controls
+
+              playsInline
+
+              style={{
+
+                width:
+                  "100%",
+
+                maxHeight:
+                  500,
+
+                background:
+                  "#000",
+
+              }}
+
+            />
+
+          )}
+
+
+          {media.mediaType.startsWith(
+            "image/"
+          ) && (
+
+            <img
+
+              src={
+                media.url
+              }
+
+              alt={
+                media.filename
+              }
+
+              style={{
+
+                width:
+                  "100%",
+
+                maxHeight:
+                  600,
+
+                objectFit:
+                  "contain",
+
+              }}
+
+            />
+
+          )}
+
+
+          {!media.mediaType.startsWith(
+            "video/"
+          ) &&
+            !media.mediaType.startsWith(
+              "image/"
+            ) && (
+
+            <p>
+
+              Preview is not currently
+              supported for this media type.
 
             </p>
 
