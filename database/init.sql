@@ -7,10 +7,32 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS media (
     id UUID PRIMARY KEY,
-    owner_id UUID NOT NULL REFERENCES users(id),
+
+    owner_id UUID NOT NULL
+        REFERENCES users(id),
+
     filename VARCHAR(500) NOT NULL,
+
     storage_key VARCHAR(1000),
+
+    original_storage_key VARCHAR(1000),
+
     media_type VARCHAR(50) NOT NULL,
+
+    processing_status VARCHAR(30)
+        NOT NULL DEFAULT 'PENDING_UPLOAD'
+        CHECK (
+            processing_status IN (
+                'PENDING_UPLOAD',
+                'UPLOADED',
+                'PROCESSING',
+                'READY',
+                'FAILED'
+            )
+        ),
+
+    processing_error TEXT,
+
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
