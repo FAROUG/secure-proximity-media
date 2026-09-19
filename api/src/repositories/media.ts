@@ -50,6 +50,66 @@ export async function createMedia(
   return result.rows[0];
 }
 
+export async function createPendingMediaUpload(
+  id: string,
+  ownerId: string,
+  filename: string,
+  originalStorageKey: string,
+  mediaType: string
+): Promise<Media> {
+  const result = await query<Media>(
+    `
+    INSERT INTO media (
+      id,
+      owner_id,
+      filename,
+      storage_key,
+      original_storage_key,
+      media_type,
+      processing_status
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      NULL,
+      $4,
+      $5,
+      'PENDING_UPLOAD'
+    )
+    RETURNING *
+    `,
+    [
+      id,
+      ownerId,
+      filename,
+      originalStorageKey,
+      mediaType
+    ]
+  );
+
+  return result.rows[0];
+}
+
+export async function markMediaUploaded(
+  mediaId: string,
+  ownerId: string
+): Promise<Media | null> {
+  const result = await query<Media>(
+    `
+    UPDATE media
+    SET processing_status = 'UPLOADED'
+    WHERE id = $1
+      AND owner_id = $2
+      AND processing_status = 'PENDING_UPLOAD'
+    RETURNING *
+    `,
+    [mediaId, ownerId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
 export async function getMediaById(
   id: string
 ) {
