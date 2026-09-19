@@ -45,6 +45,9 @@ import {
 } from "./authentication.js";
 
 
+import { createOwnerVerificationCode, verifyOwnerCode } from "./repositories/owner-verification.js";
+import { createOwnerSession } from "./repositories/sessions.js";
+
 const app = express();
 
 
@@ -71,6 +74,218 @@ app.get(
       status: "ok"
     });
 
+  }
+);
+
+
+/*
+ * --------------------------------------------------
+ * OWNER LOGIN - REQUEST VERIFICATION CODE
+ * --------------------------------------------------
+ */
+app.post(
+  "/owner/verify/request",
+  async (req, res) => {
+    try {
+      const { email } = req.body ?? {};
+
+      if (
+        typeof email !== "string" ||
+        !email.trim()
+      ) {
+        return res.status(400).json({
+          error: "Email is required"
+        });
+      }
+
+      const normalizedEmail =
+        email.trim().toLowerCase();
+
+      const result = await query<{
+        user_id: string;
+        email: string;
+      }>(
+        `
+        SELECT
+          u.id AS user_id,
+          u.email
+        FROM users u
+        WHERE LOWER(u.email) = $1
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM media m
+              WHERE m.owner_id = u.id
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM shares s
+              WHERE s.owner_id = u.id
+            )
+          )
+        LIMIT 1
+        `,
+        [normalizedEmail]
+      );
+
+      const owner = result.rows[0];
+
+      /*
+       * Return the same response whether or not
+       * the email belongs to an existing owner.
+       */
+      if (!owner) {
+        return res.status(200).json({
+          success: true,
+          message:
+            "If this email is authorized, a verification code has been sent."
+        });
+      }
+
+      const verification =
+        await createOwnerVerificationCode(
+          owner.user_id
+        );
+
+      /*
+       * LOCAL DEVELOPMENT ONLY.
+       *
+       * The code is printed to the API terminal.
+       * This is not email delivery and must not
+       * be enabled in a deployed environment.
+       */
+      if (process.env.NODE_ENV !== "development") {
+        return res.status(503).json({
+          error:
+            "Owner email delivery is not configured"
+        });
+      }
+
+      console.log(
+        "========================================"
+      );
+      console.log("OWNER VERIFICATION CODE");
+      console.log(`Email: ${owner.email}`);
+      console.log(`Code: ${verification.code}`);
+      console.log(
+        `Expires: ${verification.expiresAt.toISOString()}`
+      );
+      console.log(
+        "========================================"
+      );
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "If this email is authorized, a verification code has been sent."
+      });
+    } catch (error) {
+      console.error(
+        "Owner verification request error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: "Failed to request verification code"
+      });
+    }
+  }
+);
+
+
+/*
+ * --------------------------------------------------
+ * OWNER LOGIN - CONFIRM VERIFICATION CODE
+ * --------------------------------------------------
+ */
+app.post(
+  "/owner/verify/confirm",
+  async (req, res) => {
+    try {
+      const { email, code } = req.body ?? {};
+
+      if (
+        typeof email !== "string" ||
+        !email.trim() ||
+        typeof code !== "string" ||
+        !/^\d{6}$/.test(code)
+      ) {
+        return res.status(400).json({
+          error:
+            "A valid email and 6-digit verification code are required"
+        });
+      }
+
+      const normalizedEmail =
+        email.trim().toLowerCase();
+
+      const result = await query<{
+        user_id: string;
+      }>(
+        `
+        SELECT u.id AS user_id
+        FROM users u
+        WHERE LOWER(u.email) = $1
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM media m
+              WHERE m.owner_id = u.id
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM shares s
+              WHERE s.owner_id = u.id
+            )
+          )
+        LIMIT 1
+        `,
+        [normalizedEmail]
+      );
+
+      const owner = result.rows[0];
+
+      if (!owner) {
+        return res.status(403).json({
+          verified: false,
+          error: "Verification failed"
+        });
+      }
+
+      const verification =
+        await verifyOwnerCode(
+          owner.user_id,
+          code
+        );
+
+      if (!verification.verified) {
+        return res.status(403).json({
+          verified: false,
+          error: "Verification failed"
+        });
+      }
+
+      const session =
+        await createOwnerSession(
+          owner.user_id
+        );
+
+      return res.status(200).json({
+        verified: true,
+        sessionId: session.sessionId,
+        expiresIn: session.expiresIn
+      });
+    } catch (error) {
+      console.error(
+        "Owner verification confirmation error:",
+        error
+      );
+
+      return res.status(500).json({
+        verified: false,
+        error: "Verification failed"
+      });
+    }
   }
 );
 
