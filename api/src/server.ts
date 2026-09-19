@@ -889,7 +889,7 @@ app.get(
         const signedManifest =
           await createSignedHlsManifest(
             TEST_HLS_MANIFEST_KEY,
-            90
+            600
           );
 
 
