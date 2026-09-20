@@ -18,6 +18,9 @@ import {
 } from "./storage/hls.js";
 
 import {
+  createPendingMediaUpload,
+  getMediaById,
+  markMediaUploaded,
   getShareMedia
 } from "./repositories/media.js";
 
@@ -45,6 +48,13 @@ import {
 } from "./authentication.js";
 
 
+import { createOwnerVerificationCode, verifyOwnerCode } from "./repositories/owner-verification.js";
+import { createOwnerSession } from "./repositories/sessions.js";
+
+import crypto from "crypto";
+import { getAuthenticatedOwner } from "./owner-authentication.js";
+import { createMediaUploadUrl, getUploadedMediaMetadata } from "./storage/s3.js";
+
 const app = express();
 
 
@@ -71,6 +81,404 @@ app.get(
       status: "ok"
     });
 
+  }
+);
+
+
+/*
+ * --------------------------------------------------
+ * OWNER LOGIN - REQUEST VERIFICATION CODE
+ * --------------------------------------------------
+ */
+app.post(
+  "/owner/verify/request",
+  async (req, res) => {
+    try {
+      const { email } = req.body ?? {};
+
+      if (
+        typeof email !== "string" ||
+        !email.trim()
+      ) {
+        return res.status(400).json({
+          error: "Email is required"
+        });
+      }
+
+      const normalizedEmail =
+        email.trim().toLowerCase();
+
+      const result = await query<{
+        user_id: string;
+        email: string;
+      }>(
+        `
+        SELECT
+          u.id AS user_id,
+          u.email
+        FROM users u
+        WHERE LOWER(u.email) = $1
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM media m
+              WHERE m.owner_id = u.id
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM shares s
+              WHERE s.owner_id = u.id
+            )
+          )
+        LIMIT 1
+        `,
+        [normalizedEmail]
+      );
+
+      const owner = result.rows[0];
+
+      /*
+       * Return the same response whether or not
+       * the email belongs to an existing owner.
+       */
+      if (!owner) {
+        return res.status(200).json({
+          success: true,
+          message:
+            "If this email is authorized, a verification code has been sent."
+        });
+      }
+
+      const verification =
+        await createOwnerVerificationCode(
+          owner.user_id
+        );
+
+      /*
+       * LOCAL DEVELOPMENT ONLY.
+       *
+       * The code is printed to the API terminal.
+       * This is not email delivery and must not
+       * be enabled in a deployed environment.
+       */
+      if (process.env.NODE_ENV !== "development") {
+        return res.status(503).json({
+          error:
+            "Owner email delivery is not configured"
+        });
+      }
+
+      console.log(
+        "========================================"
+      );
+      console.log("OWNER VERIFICATION CODE");
+      console.log(`Email: ${owner.email}`);
+      console.log(`Code: ${verification.code}`);
+      console.log(
+        `Expires: ${verification.expiresAt.toISOString()}`
+      );
+      console.log(
+        "========================================"
+      );
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "If this email is authorized, a verification code has been sent."
+      });
+    } catch (error) {
+      console.error(
+        "Owner verification request error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: "Failed to request verification code"
+      });
+    }
+  }
+);
+
+
+/*
+ * --------------------------------------------------
+ * OWNER LOGIN - CONFIRM VERIFICATION CODE
+ * --------------------------------------------------
+ */
+app.post(
+  "/owner/verify/confirm",
+  async (req, res) => {
+    try {
+      const { email, code } = req.body ?? {};
+
+      if (
+        typeof email !== "string" ||
+        !email.trim() ||
+        typeof code !== "string" ||
+        !/^\d{6}$/.test(code)
+      ) {
+        return res.status(400).json({
+          error:
+            "A valid email and 6-digit verification code are required"
+        });
+      }
+
+      const normalizedEmail =
+        email.trim().toLowerCase();
+
+      const result = await query<{
+        user_id: string;
+      }>(
+        `
+        SELECT u.id AS user_id
+        FROM users u
+        WHERE LOWER(u.email) = $1
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM media m
+              WHERE m.owner_id = u.id
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM shares s
+              WHERE s.owner_id = u.id
+            )
+          )
+        LIMIT 1
+        `,
+        [normalizedEmail]
+      );
+
+      const owner = result.rows[0];
+
+      if (!owner) {
+        return res.status(403).json({
+          verified: false,
+          error: "Verification failed"
+        });
+      }
+
+      const verification =
+        await verifyOwnerCode(
+          owner.user_id,
+          code
+        );
+
+      if (!verification.verified) {
+        return res.status(403).json({
+          verified: false,
+          error: "Verification failed"
+        });
+      }
+
+      const session =
+        await createOwnerSession(
+          owner.user_id
+        );
+
+      return res.status(200).json({
+        verified: true,
+        sessionId: session.sessionId,
+        expiresIn: session.expiresIn
+      });
+    } catch (error) {
+      console.error(
+        "Owner verification confirmation error:",
+        error
+      );
+
+      return res.status(500).json({
+        verified: false,
+        error: "Verification failed"
+      });
+    }
+  }
+);
+
+
+/*
+ * --------------------------------------------------
+ * MEDIA UPLOAD - INITIALIZE
+ * --------------------------------------------------
+ */
+app.post(
+  "/media/uploads",
+  async (req, res) => {
+    try {
+      /*
+       * Identify the owner using the server-issued
+       * owner session, not an ownerId in the request.
+       */
+      const owner = await getAuthenticatedOwner(req);
+
+      if (!owner) {
+        return res.status(401).json({
+          error: "Owner authentication required"
+        });
+      }
+
+      const { filename, contentType } = req.body ?? {};
+
+      if (
+        typeof filename !== "string" ||
+        !filename.trim() ||
+        filename.length > 500 ||
+        typeof contentType !== "string" ||
+        !["video/mp4", "video/quicktime"].includes(contentType)
+      ) {
+        return res.status(400).json({
+          error:
+            "A filename and supported video content type are required"
+        });
+      }
+
+      const mediaId = crypto.randomUUID();
+
+      /*
+       * Generate the storage key on the server.
+       * Never accept an arbitrary S3 key from the client.
+       */
+      const originalStorageKey =
+        `media/${owner.userId}/${mediaId}/original`;
+
+      const uploadUrl = await createMediaUploadUrl(
+        originalStorageKey,
+        contentType
+      );
+
+      await createPendingMediaUpload(
+        mediaId,
+        owner.userId,
+        filename.trim(),
+        originalStorageKey,
+        contentType
+      );
+
+      return res.status(201).json({
+        mediaId,
+        uploadUrl,
+        method: "PUT",
+        headers: {
+          "Content-Type": contentType
+        },
+        expiresIn: 300
+      });
+    } catch (error) {
+      console.error(
+        "Media upload initialization error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: "Failed to initialize media upload"
+      });
+    }
+  }
+);
+
+
+/*
+ * --------------------------------------------------
+ * MEDIA UPLOAD - COMPLETE
+ * --------------------------------------------------
+ */
+app.post(
+  "/media/uploads/:mediaId/complete",
+  async (req, res) => {
+    try {
+      const owner = await getAuthenticatedOwner(req);
+
+      if (!owner) {
+        return res.status(401).json({
+          error: "Owner authentication required"
+        });
+      }
+
+      const { mediaId } = req.params;
+
+      const media = await getMediaById(mediaId);
+
+      if (!media || media.owner_id !== owner.userId) {
+        return res.status(404).json({
+          error: "Media not found"
+        });
+      }
+
+      if (media.processing_status !== "PENDING_UPLOAD") {
+        return res.status(409).json({
+          error: "Media is not pending upload"
+        });
+      }
+
+      if (!media.original_storage_key) {
+        return res.status(409).json({
+          error: "Original storage key is missing"
+        });
+      }
+
+      /*
+       * Confirm that the object actually exists in S3.
+       */
+      let metadata: Awaited<
+        ReturnType<typeof getUploadedMediaMetadata>
+      >;
+
+      try {
+        metadata = await getUploadedMediaMetadata(
+          media.original_storage_key
+        );
+      } catch (error) {
+        console.error(
+          "Uploaded media S3 verification error:",
+          error
+        );
+
+        return res.status(409).json({
+          error: "Uploaded media could not be verified"
+        });
+      }
+
+      if (
+        metadata.contentType !== media.media_type ||
+        !metadata.contentLength ||
+        metadata.contentLength <= 0
+      ) {
+        return res.status(409).json({
+          error: "Uploaded media metadata is invalid"
+        });
+      }
+
+      /*
+       * Update only the authenticated owner's media.
+       */
+      const updatedMedia = await markMediaUploaded(
+        media.id,
+        owner.userId
+      );
+
+      if (!updatedMedia) {
+        return res.status(409).json({
+          error: "Media upload status has changed"
+        });
+      }
+
+      return res.status(200).json({
+        mediaId: updatedMedia.id,
+        processingStatus: updatedMedia.processing_status,
+        sizeBytes: metadata.contentLength,
+        contentType: metadata.contentType
+      });
+    } catch (error) {
+      console.error(
+        "Media upload completion error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: "Failed to complete media upload"
+      });
+    }
   }
 );
 
