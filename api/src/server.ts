@@ -18,6 +18,9 @@ import {
 } from "./storage/s3.js";
 
 import {
+  createPendingMediaUpload,
+  getMediaById,
+  markMediaUploaded,
   getShareMedia
 } from "./repositories/media.js";
 
@@ -47,6 +50,10 @@ import {
 
 import { createOwnerVerificationCode, verifyOwnerCode } from "./repositories/owner-verification.js";
 import { createOwnerSession } from "./repositories/sessions.js";
+
+import crypto from "crypto";
+import { getAuthenticatedOwner } from "./owner-authentication.js";
+import { createMediaUploadUrl, getUploadedMediaMetadata } from "./storage/s3.js";
 
 const app = express();
 
@@ -284,6 +291,192 @@ app.post(
       return res.status(500).json({
         verified: false,
         error: "Verification failed"
+      });
+    }
+  }
+);
+
+
+/*
+ * --------------------------------------------------
+ * MEDIA UPLOAD - INITIALIZE
+ * --------------------------------------------------
+ */
+app.post(
+  "/media/uploads",
+  async (req, res) => {
+    try {
+      /*
+       * Identify the owner using the server-issued
+       * owner session, not an ownerId in the request.
+       */
+      const owner = await getAuthenticatedOwner(req);
+
+      if (!owner) {
+        return res.status(401).json({
+          error: "Owner authentication required"
+        });
+      }
+
+      const { filename, contentType } = req.body ?? {};
+
+      if (
+        typeof filename !== "string" ||
+        !filename.trim() ||
+        filename.length > 500 ||
+        typeof contentType !== "string" ||
+        !["video/mp4", "video/quicktime"].includes(contentType)
+      ) {
+        return res.status(400).json({
+          error:
+            "A filename and supported video content type are required"
+        });
+      }
+
+      const mediaId = crypto.randomUUID();
+
+      /*
+       * Generate the storage key on the server.
+       * Never accept an arbitrary S3 key from the client.
+       */
+      const originalStorageKey =
+        `media/${owner.userId}/${mediaId}/original`;
+
+      const uploadUrl = await createMediaUploadUrl(
+        originalStorageKey,
+        contentType
+      );
+
+      await createPendingMediaUpload(
+        mediaId,
+        owner.userId,
+        filename.trim(),
+        originalStorageKey,
+        contentType
+      );
+
+      return res.status(201).json({
+        mediaId,
+        uploadUrl,
+        method: "PUT",
+        headers: {
+          "Content-Type": contentType
+        },
+        expiresIn: 300
+      });
+    } catch (error) {
+      console.error(
+        "Media upload initialization error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: "Failed to initialize media upload"
+      });
+    }
+  }
+);
+
+
+/*
+ * --------------------------------------------------
+ * MEDIA UPLOAD - COMPLETE
+ * --------------------------------------------------
+ */
+app.post(
+  "/media/uploads/:mediaId/complete",
+  async (req, res) => {
+    try {
+      const owner = await getAuthenticatedOwner(req);
+
+      if (!owner) {
+        return res.status(401).json({
+          error: "Owner authentication required"
+        });
+      }
+
+      const { mediaId } = req.params;
+
+      const media = await getMediaById(mediaId);
+
+      if (!media || media.owner_id !== owner.userId) {
+        return res.status(404).json({
+          error: "Media not found"
+        });
+      }
+
+      if (media.processing_status !== "PENDING_UPLOAD") {
+        return res.status(409).json({
+          error: "Media is not pending upload"
+        });
+      }
+
+      if (!media.original_storage_key) {
+        return res.status(409).json({
+          error: "Original storage key is missing"
+        });
+      }
+
+      /*
+       * Confirm that the object actually exists in S3.
+       */
+      let metadata: Awaited<
+        ReturnType<typeof getUploadedMediaMetadata>
+      >;
+
+      try {
+        metadata = await getUploadedMediaMetadata(
+          media.original_storage_key
+        );
+      } catch (error) {
+        console.error(
+          "Uploaded media S3 verification error:",
+          error
+        );
+
+        return res.status(409).json({
+          error: "Uploaded media could not be verified"
+        });
+      }
+
+      if (
+        metadata.contentType !== media.media_type ||
+        !metadata.contentLength ||
+        metadata.contentLength <= 0
+      ) {
+        return res.status(409).json({
+          error: "Uploaded media metadata is invalid"
+        });
+      }
+
+      /*
+       * Update only the authenticated owner's media.
+       */
+      const updatedMedia = await markMediaUploaded(
+        media.id,
+        owner.userId
+      );
+
+      if (!updatedMedia) {
+        return res.status(409).json({
+          error: "Media upload status has changed"
+        });
+      }
+
+      return res.status(200).json({
+        mediaId: updatedMedia.id,
+        processingStatus: updatedMedia.processing_status,
+        sizeBytes: metadata.contentLength,
+        contentType: metadata.contentType
+      });
+    } catch (error) {
+      console.error(
+        "Media upload completion error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: "Failed to complete media upload"
       });
     }
   }
