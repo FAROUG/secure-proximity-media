@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test:worker": "npm run build && node tests/worker.integration.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
