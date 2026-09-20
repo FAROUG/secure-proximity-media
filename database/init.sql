@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS media (
 
     processing_error TEXT,
 
+    processing_claim_id UUID,
+    processing_lease_expires_at TIMESTAMP,
+
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 

@@ -17,6 +17,8 @@ export interface Media {
   processing_status: MediaProcessingStatus;
   processing_error: string | null;
   created_at: Date;
+  processing_claim_id: string | null;
+  processing_lease_expires_at: Date | null;
 }
 
 export async function createMedia(
@@ -130,6 +132,7 @@ export interface ShareMedia {
   filename: string;
   storage_key: string | null;
   media_type: string;
+  processing_status: MediaProcessingStatus;
 }
 
 export async function getShareMedia(
@@ -143,7 +146,8 @@ export async function getShareMedia(
         m.owner_id,
         m.filename,
         m.storage_key,
-        m.media_type
+        m.media_type,
+        m.processing_status
       FROM shares s
       INNER JOIN media m
         ON m.id = s.media_id
@@ -156,6 +160,155 @@ export async function getShareMedia(
         shareId
       ]
     );
+
+  return result.rows[0] ?? null;
+}
+
+const PROCESSING_LEASE_SECONDS = 300;
+
+export async function claimMediaForProcessing(
+  mediaId: string,
+  claimId: string
+): Promise<Media | null> {
+  const result = await query<Media>(
+    `
+      UPDATE media
+      SET
+        processing_status = 'PROCESSING',
+        processing_error = NULL,
+        processing_claim_id = $2,
+        processing_lease_expires_at =
+          NOW() + ($3 * INTERVAL '1 second')
+      WHERE id = $1
+        AND original_storage_key IS NOT NULL
+        AND (
+          processing_status = 'UPLOADED'
+          OR (
+            processing_status = 'PROCESSING'
+            AND processing_lease_expires_at < NOW()
+          )
+        )
+      RETURNING *
+    `,
+    [mediaId, claimId, PROCESSING_LEASE_SECONDS]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function renewMediaProcessingLease(
+  mediaId: string,
+  claimId: string
+): Promise<boolean> {
+  const result = await query<Media>(
+    `
+      UPDATE media
+      SET processing_lease_expires_at =
+        NOW() + ($3 * INTERVAL '1 second')
+      WHERE id = $1
+        AND processing_claim_id = $2
+        AND processing_status = 'PROCESSING'
+        AND processing_lease_expires_at > NOW()
+      RETURNING id
+    `,
+    [mediaId, claimId, PROCESSING_LEASE_SECONDS]
+  );
+
+  return result.rows.length === 1;
+}
+
+export async function releaseMediaProcessingClaim(
+  mediaId: string,
+  claimId: string
+): Promise<boolean> {
+  const result = await query<Media>(
+    `
+      UPDATE media
+      SET
+        processing_status = 'UPLOADED',
+        processing_error = NULL,
+        processing_claim_id = NULL,
+        processing_lease_expires_at = NULL
+      WHERE id = $1
+        AND processing_claim_id = $2
+        AND processing_status = 'PROCESSING'
+        AND processing_lease_expires_at > NOW()
+      RETURNING id
+    `,
+    [mediaId, claimId]
+  );
+
+  return result.rows.length === 1;
+}
+
+export async function markMediaReady(
+  mediaId: string,
+  claimId: string,
+  hlsManifestKey: string
+): Promise<Media | null> {
+  const result = await query<Media>(
+    `
+      UPDATE media
+      SET
+        storage_key = $3,
+        processing_status = 'READY',
+        processing_error = NULL,
+        processing_claim_id = NULL,
+        processing_lease_expires_at = NULL
+      WHERE id = $1
+        AND processing_claim_id = $2
+        AND processing_status = 'PROCESSING'
+        AND processing_lease_expires_at > NOW()
+      RETURNING *
+    `,
+    [mediaId, claimId, hlsManifestKey]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function markMediaProcessingFailed(
+  mediaId: string,
+  claimId: string,
+  errorMessage: string
+): Promise<Media | null> {
+  const result = await query<Media>(
+    `
+      UPDATE media
+      SET
+        processing_status = 'FAILED',
+        processing_error = $3,
+        processing_claim_id = NULL,
+        processing_lease_expires_at = NULL
+      WHERE id = $1
+        AND processing_claim_id = $2
+        AND processing_status = 'PROCESSING'
+        AND processing_lease_expires_at > NOW()
+      RETURNING *
+    `,
+    [mediaId, claimId, errorMessage]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function getNextUploadedMedia(): Promise<Media | null> {
+  const result = await query<Media>(
+    `
+      SELECT *
+      FROM media
+      WHERE original_storage_key IS NOT NULL
+        AND (
+          processing_status = 'UPLOADED'
+          OR (
+            processing_status = 'PROCESSING'
+            AND processing_lease_expires_at < NOW()
+          )
+        )
+      ORDER BY created_at ASC, id ASC
+      LIMIT 1
+    `
+  );
 
   return result.rows[0] ?? null;
 }
