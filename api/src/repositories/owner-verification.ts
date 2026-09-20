@@ -92,9 +92,9 @@ export async function verifyOwnerCode(
    * using the same verification code.
    */
   const result = await query<{
-    id: string;
+    id: string
     verified_at: Date | null;
-  }>(
+    }>(
     `
     WITH latest AS (
       SELECT id

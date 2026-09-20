@@ -112,6 +112,32 @@ export async function markMediaUploaded(
   return result.rows[0] ?? null;
 }
 
+export async function retryFailedMedia(
+  mediaId: string,
+  ownerId: string
+): Promise<Media | null> {
+  const result = await query<Media>(
+    `
+      UPDATE media
+      SET
+        processing_status = 'UPLOADED',
+        processing_error = NULL,
+        processing_claim_id = NULL,
+        processing_lease_expires_at = NULL
+      WHERE id = $1
+        AND owner_id = $2
+        AND processing_status = 'FAILED'
+        AND original_storage_key IS NOT NULL
+        AND processing_claim_id IS NULL
+        AND processing_lease_expires_at IS NULL
+      RETURNING *
+    `,
+    [mediaId, ownerId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
 export async function getMediaById(
   id: string
 ) {
