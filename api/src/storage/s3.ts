@@ -53,6 +53,33 @@ export async function createMediaSignedUrl(
 }
 
 
+export async function getMediaTextObject(
+  storageKey: string
+): Promise<string> {
+  if (!MEDIA_BUCKET) {
+    throw new Error(
+      "MEDIA_BUCKET_NAME is not configured"
+    );
+  }
+
+  const command =
+    new GetObjectCommand({
+      Bucket: MEDIA_BUCKET,
+      Key: storageKey,
+    });
+
+  const response =
+    await s3.send(command);
+
+  if (!response.Body) {
+    throw new Error(
+      `S3 object has no body: ${storageKey}`
+    );
+  }
+
+  return response.Body.transformToString();
+}
+
 export async function createMediaUploadUrl(
   storageKey: string,
   contentType: string

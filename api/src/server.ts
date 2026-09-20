@@ -14,8 +14,8 @@ import {
 } from "./repositories/shares.js";
 
 import {
-  createMediaSignedUrl
-} from "./storage/s3.js";
+  createSignedHlsManifest
+} from "./storage/hls.js";
 
 import {
   createPendingMediaUpload,
@@ -959,7 +959,7 @@ app.post(
  * This endpoint ONLY answers whether
  * the current verified user is allowed.
  *
- * It does not return media or S3 URLs.
+ * It does not return media.
  */
 app.post(
   "/share/:shareId/access",
@@ -1043,7 +1043,6 @@ app.post(
        * PROXIMITY ACCESS
        * --------------------------------------------------
        */
-
       const viewer =
         await getPresence(
           userId,
@@ -1162,9 +1161,14 @@ app.post(
  *
  * 1. Verifies the session.
  * 2. Checks recipient policy.
- * 3. Performs proximity authorization.
- * 4. Fetches media metadata.
- * 5. Generates a short-lived S3 URL.
+ * 3. Performs proximity authorization if required.
+ * 4. Confirms the share has valid media.
+ * 5. Reads the private HLS manifest from S3.
+ * 6. Rewrites HLS segment references with
+ *    short-lived CloudFront signed URLs.
+ * 7. Returns the protected HLS manifest.
+ *
+ * Uses the processed manifest stored on READY media.
  */
 app.get(
   "/share/:shareId/media",
@@ -1229,6 +1233,39 @@ app.get(
 
       /*
        * --------------------------------------------------
+       * FETCH SHARE MEDIA
+       * --------------------------------------------------
+       *
+       * Validate that this share references valid media.
+       */
+      const media =
+        await getShareMedia(
+          shareId
+        );
+
+
+      if (!media) {
+
+        return res.status(404).json({
+          allowed: false,
+          reason:
+            "Media not found"
+        });
+
+      }
+
+      if (
+        media.processing_status !== "READY" ||
+        !media.storage_key
+      ) {
+        return res.status(409).json({
+          allowed: false,
+          reason: "Media is not ready for playback"
+        });
+      }
+
+      /*
+       * --------------------------------------------------
        * UNRESTRICTED RECIPIENT
        * --------------------------------------------------
        */
@@ -1237,64 +1274,31 @@ app.get(
         "UNRESTRICTED"
       ) {
 
-        const media =
-          await getShareMedia(
-            shareId
+        const signedManifest =
+          await createSignedHlsManifest(
+            media.storage_key,
+            600
           );
 
 
-        if (!media) {
-
-          return res.status(404).json({
-            allowed: false,
-            reason:
-              "Media not found"
-          });
-
-        }
-
-
-        if (!media.storage_key) {
-
-          return res.status(404).json({
-            allowed: false,
-            reason:
-              "Media storage key is missing"
-          });
-
-        }
+        /*
+         * Do not cache an authorization-dependent
+         * playlist in the browser or an intermediary.
+         */
+        res.setHeader(
+          "Cache-Control",
+          "private, no-store, max-age=0"
+        );
 
 
-        const mediaUrl =
-          await createMediaSignedUrl(
-            media.storage_key
+        return res
+          .status(200)
+          .type(
+            "application/vnd.apple.mpegurl"
+          )
+          .send(
+            signedManifest
           );
-
-
-        return res.json({
-
-          allowed: true,
-
-          reason:
-            "Unrestricted access",
-
-          media: {
-
-            id:
-              media.media_id,
-
-            filename:
-              media.filename,
-
-            mediaType:
-              media.media_type,
-
-            url:
-              mediaUrl
-
-          }
-
-        });
 
       }
 
@@ -1393,75 +1397,35 @@ app.get(
 
       /*
        * --------------------------------------------------
-       * FETCH MEDIA
+       * CREATE PROTECTED HLS MANIFEST
        * --------------------------------------------------
+       *
+       * Each .ts segment inside the returned manifest
+       * receives a short-lived CloudFront signed URL.
+       *
+       * Uses the processed manifest for this media record.
        */
-      const media =
-        await getShareMedia(
-          shareId
+      const signedManifest =
+        await createSignedHlsManifest(
+          media.storage_key,
+          90
         );
 
 
-      if (!media) {
-
-        return res.status(404).json({
-          allowed: false,
-          reason:
-            "Media not found"
-        });
-
-      }
+      res.setHeader(
+        "Cache-Control",
+        "private, no-store, max-age=0"
+      );
 
 
-      if (!media.storage_key) {
-
-        return res.status(404).json({
-          allowed: false,
-          reason:
-            "Media storage key is missing"
-        });
-
-      }
-
-
-      /*
-       * --------------------------------------------------
-       * CREATE SHORT-LIVED S3 URL
-       * --------------------------------------------------
-       */
-      const mediaUrl =
-        await createMediaSignedUrl(
-          media.storage_key
+      return res
+        .status(200)
+        .type(
+          "application/vnd.apple.mpegurl"
+        )
+        .send(
+          signedManifest
         );
-
-
-      return res.json({
-
-        allowed: true,
-
-        reason:
-          authorizationResult.reason,
-
-        distanceMeters:
-          authorizationResult.distanceMeters,
-
-        media: {
-
-          id:
-            media.media_id,
-
-          filename:
-            media.filename,
-
-          mediaType:
-            media.media_type,
-
-          url:
-            mediaUrl
-
-        }
-
-      });
 
     } catch (error) {
 
@@ -1531,7 +1495,7 @@ async function start() {
         );
 
         console.log(
-          "  - Network: https://192.168.1.70:4000"
+          "  - Network: https://MacBook-Pro.local:4000"
         );
 
       }

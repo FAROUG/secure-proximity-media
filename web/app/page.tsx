@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import Hls from "hls.js";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
-  // "https://localhost:4000";
   "https://localhost:4000";
 
 const SHARE_ID =
@@ -23,35 +27,25 @@ interface AccessResult {
   distanceMeters?: number;
 }
 
-interface ProtectedMedia {
-  id: string;
-  filename: string;
-  mediaType: string;
-  url: string;
-}
-
-interface MediaResponse {
-  allowed: boolean;
-  reason?: string;
-  distanceMeters?: number;
-  media?: ProtectedMedia;
-}
-
 type VerificationStep =
   | "email"
   | "code"
   | "verified";
 
 export default function Home() {
-
   /*
    * --------------------------------------------------
    * EMAIL VERIFICATION
    * --------------------------------------------------
    */
 
-  const [verificationStep, setVerificationStep] =
-    useState<VerificationStep>("email");
+  const [
+    verificationStep,
+    setVerificationStep,
+  ] =
+    useState<VerificationStep>(
+      "email"
+    );
 
   const [email, setEmail] =
     useState("");
@@ -59,12 +53,19 @@ export default function Home() {
   const [code, setCode] =
     useState("");
 
-  const [sessionId, setSessionId] =
-    useState<string | null>(null);
+  const [
+    sessionId,
+    setSessionId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [verificationLoading, setVerificationLoading] =
+  const [
+    verificationLoading,
+    setVerificationLoading,
+  ] =
     useState(false);
-
 
   /*
    * --------------------------------------------------
@@ -72,30 +73,63 @@ export default function Home() {
    * --------------------------------------------------
    */
 
-  const [location, setLocation] =
-    useState<LocationState | null>(null);
+  const [
+    location,
+    setLocation,
+  ] =
+    useState<LocationState | null>(
+      null
+    );
 
-  const [result, setResult] =
-    useState<AccessResult | null>(null);
+  const [
+    result,
+    setResult,
+  ] =
+    useState<AccessResult | null>(
+      null
+    );
 
-  const [media, setMedia] =
-    useState<ProtectedMedia | null>(null);
-
-  const [mediaLoading, setMediaLoading] =
+  const [
+    mediaLoading,
+    setMediaLoading,
+  ] =
     useState(false);
 
-  const [isSecureContext, setIsSecureContext] =
-    useState<boolean | null>(null);
+  const [
+    hlsManifestUrl,
+    setHlsManifestUrl,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [
+    isSecureContext,
+    setIsSecureContext,
+  ] =
+    useState<boolean | null>(
+      null
+    );
 
-  const [loading, setLoading] =
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(false);
 
-  const [tracking, setTracking] =
+  const [
+    tracking,
+    setTracking,
+  ] =
     useState(false);
-
 
   /*
    * --------------------------------------------------
@@ -104,13 +138,31 @@ export default function Home() {
    */
 
   const watchId =
-    useRef<number | null>(null);
+    useRef<number | null>(
+      null
+    );
 
   const heartbeatId =
     useRef<ReturnType<
       typeof setInterval
-    > | null>(null);
+    > | null>(
+      null
+    );
 
+  const videoRef =
+    useRef<HTMLVideoElement | null>(
+      null
+    );
+
+  const hlsRef =
+    useRef<Hls | null>(
+      null
+    );
+
+  const manifestBlobUrlRef =
+    useRef<string | null>(
+      null
+    );
 
   /*
    * --------------------------------------------------
@@ -119,13 +171,10 @@ export default function Home() {
    */
 
   useEffect(() => {
-
     setIsSecureContext(
       window.isSecureContext
     );
-
   }, []);
-
 
   /*
    * --------------------------------------------------
@@ -134,76 +183,66 @@ export default function Home() {
    */
 
   async function requestVerificationCode() {
+    setVerificationLoading(
+      true
+    );
 
-    setVerificationLoading(true);
-    setError(null);
+    setError(
+      null
+    );
 
     try {
-
       const response =
         await fetch(
           `${API_URL}/share/${SHARE_ID}/verify/request`,
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
                 "application/json",
             },
 
-            body: JSON.stringify({
-              email:
-                email
-                  .trim()
-                  .toLowerCase(),
-            }),
+            body:
+              JSON.stringify({
+                email:
+                  email
+                    .trim()
+                    .toLowerCase(),
+              }),
           }
         );
-
 
       const data =
         await response.json();
 
-
-      if (!response.ok) {
-
+      if (
+        !response.ok
+      ) {
         throw new Error(
           data.error ??
-          "Failed to request verification code"
+            "Failed to request verification code"
         );
-
       }
 
-
-      /*
-       * Move to code entry.
-       *
-       * We intentionally do not depend
-       * on the backend revealing whether
-       * the email is authorized.
-       */
       setVerificationStep(
         "code"
       );
-
-
-    } catch (err) {
-
+    } catch (
+      err
+    ) {
       setError(
         err instanceof Error
           ? err.message
           : "Failed to request verification code"
       );
-
     } finally {
-
       setVerificationLoading(
         false
       );
-
     }
   }
-
 
   /*
    * --------------------------------------------------
@@ -212,124 +251,108 @@ export default function Home() {
    */
 
   async function confirmVerificationCode() {
+    setVerificationLoading(
+      true
+    );
 
-    setVerificationLoading(true);
-    setError(null);
+    setError(
+      null
+    );
 
     try {
-
       const response =
         await fetch(
           `${API_URL}/share/${SHARE_ID}/verify/confirm`,
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
                 "application/json",
             },
 
-            body: JSON.stringify({
-              email:
-                email
-                  .trim()
-                  .toLowerCase(),
+            body:
+              JSON.stringify({
+                email:
+                  email
+                    .trim()
+                    .toLowerCase(),
 
-              code:
-                code.trim(),
-            }),
+                code:
+                  code.trim(),
+              }),
           }
         );
-
 
       const data =
         await response.json();
 
-
-      if (!response.ok) {
-
+      if (
+        !response.ok
+      ) {
         throw new Error(
           data.error ??
-          data.reason ??
-          "Verification failed"
+            data.reason ??
+            "Verification failed"
         );
-
       }
-
 
       if (
         !data.verified ||
         !data.sessionId
       ) {
-
         throw new Error(
           "Verification failed"
         );
-
       }
 
-
-      /*
-       * MVP STORAGE
-       *
-       * We store the session temporarily
-       * in sessionStorage.
-       *
-       * Later we can move this to an
-       * HttpOnly Secure cookie.
-       */
       sessionStorage.setItem(
         `secure-media-session-${SHARE_ID}`,
         data.sessionId
       );
 
-
       setSessionId(
         data.sessionId
       );
-
 
       setVerificationStep(
         "verified"
       );
 
-
-      setCode("");
-
-    } catch (err) {
-
+      setCode(
+        ""
+      );
+    } catch (
+      err
+    ) {
       setError(
         err instanceof Error
           ? err.message
           : "Verification failed"
       );
-
     } finally {
-
       setVerificationLoading(
         false
       );
-
     }
   }
 
-
   /*
    * --------------------------------------------------
-   * RESTORE SESSION ON PAGE REFRESH
+   * RESTORE SESSION
    * --------------------------------------------------
    */
 
   useEffect(() => {
-
     const storedSessionId =
       sessionStorage.getItem(
         `secure-media-session-${SHARE_ID}`
       );
 
-
-    if (storedSessionId) {
-
+    if (
+      storedSessionId
+    ) {
       setSessionId(
         storedSessionId
       );
@@ -337,11 +360,8 @@ export default function Home() {
       setVerificationStep(
         "verified"
       );
-
     }
-
   }, []);
-
 
   /*
    * --------------------------------------------------
@@ -350,102 +370,90 @@ export default function Home() {
    */
 
   async function sendPresence(
-    currentLocation: LocationState
+    currentLocation:
+      LocationState
   ) {
-
-    if (!sessionId) {
-
+    if (
+      !sessionId
+    ) {
       setError(
         "Please verify your email before sharing your location."
       );
 
       return false;
-
     }
 
-
     try {
-
       const response =
         await fetch(
           `${API_URL}/shares/${SHARE_ID}/presence`,
-          // Change API_URL to NEXT_PUBLIC_API_URL
-          // `${process.env.NEXT_PUBLIC_API_URL}/shares/${SHARE_ID}/presence`,
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
-
               "Content-Type":
                 "application/json",
 
               "x-session-id":
                 sessionId,
-
             },
 
-            body: JSON.stringify({
+            body:
+              JSON.stringify({
+                latitude:
+                  currentLocation.latitude,
 
-              latitude:
-                currentLocation.latitude,
+                longitude:
+                  currentLocation.longitude,
 
-              longitude:
-                currentLocation.longitude,
-
-              accuracy:
-                currentLocation.accuracy,
-
-            }),
-
+                accuracy:
+                  currentLocation.accuracy,
+              }),
           }
         );
-
 
       const data =
         await response.json();
 
-
-      if (!response.ok) {
-
-        /*
-         * Session expired or invalid.
-         */
+      if (
+        !response.ok
+      ) {
         if (
-          response.status === 401
+          response.status ===
+          401
         ) {
-
           sessionStorage.removeItem(
             `secure-media-session-${SHARE_ID}`
           );
 
-          setSessionId(null);
+          setSessionId(
+            null
+          );
 
           setVerificationStep(
             "email"
           );
 
           stopTracking();
-
+          destroyMediaPlayer();
         }
-
 
         throw new Error(
           data.error ??
-          "Failed to update presence"
+            data.reason ??
+            "Failed to update presence"
         );
-
       }
 
-
       return true;
-
-    } catch (err) {
-
+    } catch (
+      err
+    ) {
       console.error(
         "Presence update failed:",
         err
       );
-
 
       setError(
         err instanceof Error
@@ -453,12 +461,9 @@ export default function Home() {
           : "Failed to update presence"
       );
 
-
       return false;
-
     }
   }
-
 
   /*
    * --------------------------------------------------
@@ -467,40 +472,35 @@ export default function Home() {
    */
 
   function handlePosition(
-    position: GeolocationPosition
+    position:
+      GeolocationPosition
   ) {
+    const currentLocation:
+      LocationState = {
+        latitude:
+          position.coords
+            .latitude,
 
-    const currentLocation: LocationState = {
+        longitude:
+          position.coords
+            .longitude,
 
-      latitude:
-        position.coords.latitude,
+        accuracy:
+          position.coords
+            .accuracy,
 
-      longitude:
-        position.coords.longitude,
-
-      accuracy:
-        position.coords.accuracy,
-
-      timestamp:
-        Date.now(),
-
-    };
-
+        timestamp:
+          Date.now(),
+      };
 
     setLocation(
       currentLocation
     );
 
-
-    /*
-     * Immediately send location.
-     */
     void sendPresence(
       currentLocation
     );
-
   }
-
 
   /*
    * --------------------------------------------------
@@ -509,9 +509,9 @@ export default function Home() {
    */
 
   function handleLocationError(
-    gpsError: GeolocationPositionError
+    gpsError:
+      GeolocationPositionError
   ) {
-
     console.error(
       "Geolocation error:",
       {
@@ -523,48 +523,36 @@ export default function Home() {
       }
     );
 
-
     switch (
       gpsError.code
     ) {
-
       case 1:
-
         setError(
           "Location permission is blocked for this website. Please change the browser's Location permission from Block to Allow."
         );
 
         break;
 
-
       case 2:
-
         setError(
           "The browser could not determine your location. Check that Location Services/GPS is enabled."
         );
 
         break;
 
-
       case 3:
-
         setError(
           "Getting your location timed out. Please try again."
         );
 
         break;
 
-
       default:
-
         setError(
           `Unable to get your location. GPS error code: ${gpsError.code}.`
         );
-
     }
-
   }
-
 
   /*
    * --------------------------------------------------
@@ -573,52 +561,52 @@ export default function Home() {
    */
 
   function startTracking() {
+    setError(
+      null
+    );
 
-    setError(null);
-    setResult(null);
+    setResult(
+      null
+    );
 
-
-    if (!sessionId) {
-
+    if (
+      !sessionId
+    ) {
       setError(
         "Please verify your email before starting location tracking."
       );
 
       return;
-
     }
 
-
-    if (!navigator.geolocation) {
-
+    if (
+      !navigator.geolocation
+    ) {
       setError(
         "Geolocation is not supported by this browser."
       );
 
       return;
-
     }
 
-
     if (
-      watchId.current !== null
+      watchId.current !==
+      null
     ) {
       return;
     }
 
-
-    setTracking(true);
-
+    setTracking(
+      true
+    );
 
     watchId.current =
       navigator.geolocation.watchPosition(
-
         handlePosition,
 
         handleLocationError,
 
         {
-
           enableHighAccuracy:
             true,
 
@@ -627,47 +615,31 @@ export default function Home() {
 
           timeout:
             15000,
-
         }
-
       );
 
-
-    /*
-     * Renew Redis presence
-     * every 10 seconds.
-     */
     heartbeatId.current =
       setInterval(
         () => {
-
           setLocation(
             (
               currentLocation
             ) => {
-
               if (
                 currentLocation
               ) {
-
                 void sendPresence(
                   currentLocation
                 );
-
               }
 
-
               return currentLocation;
-
             }
           );
-
         },
         10000
       );
-
   }
-
 
   /*
    * --------------------------------------------------
@@ -676,39 +648,34 @@ export default function Home() {
    */
 
   function stopTracking() {
-
     if (
-      watchId.current !== null
+      watchId.current !==
+      null
     ) {
-
       navigator.geolocation.clearWatch(
         watchId.current
       );
 
-      watchId.current = null;
-
+      watchId.current =
+        null;
     }
 
-
     if (
-      heartbeatId.current !== null
+      heartbeatId.current !==
+      null
     ) {
-
       clearInterval(
         heartbeatId.current
       );
 
-      heartbeatId.current = null;
-
+      heartbeatId.current =
+        null;
     }
-
 
     setTracking(
       false
     );
-
   }
-
 
   /*
    * --------------------------------------------------
@@ -717,17 +684,15 @@ export default function Home() {
    */
 
   async function checkAccess() {
-
-    if (!sessionId) {
-
+    if (
+      !sessionId
+    ) {
       setError(
         "Please verify your email before checking access."
       );
 
       return;
-
     }
-
 
     setLoading(
       true
@@ -741,45 +706,180 @@ export default function Home() {
       null
     );
 
-    setMedia(
-      null
-    );
-
+    destroyMediaPlayer();
 
     try {
-
       const response =
         await fetch(
           `${API_URL}/share/${SHARE_ID}/access`,
           {
-
             method:
               "POST",
 
             headers: {
-
               "Content-Type":
                 "application/json",
 
               "x-session-id":
                 sessionId,
-
             },
-
           }
         );
-
 
       const data =
         await response.json();
 
+      if (
+        response.status ===
+        401
+      ) {
+        sessionStorage.removeItem(
+          `secure-media-session-${SHARE_ID}`
+        );
+
+        setSessionId(
+          null
+        );
+
+        setVerificationStep(
+          "email"
+        );
+
+        stopTracking();
+        destroyMediaPlayer();
+      }
+
+      setResult(
+        data
+      );
+    } catch (
+      err
+    ) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to check access"
+      );
+    } finally {
+      setLoading(
+        false
+      );
+    }
+  }
+
+  /*
+   * --------------------------------------------------
+   * DESTROY MEDIA PLAYER
+   * --------------------------------------------------
+   */
+
+  function destroyMediaPlayer() {
+    if (
+      hlsRef.current
+    ) {
+      hlsRef.current.destroy();
+
+      hlsRef.current =
+        null;
+    }
+
+    if (
+      videoRef.current
+    ) {
+      videoRef.current.pause();
+
+      videoRef.current.removeAttribute(
+        "src"
+      );
+
+      videoRef.current.load();
+    }
+
+    if (
+      manifestBlobUrlRef.current
+    ) {
+      URL.revokeObjectURL(
+        manifestBlobUrlRef.current
+      );
+
+      manifestBlobUrlRef.current =
+        null;
+    }
+
+    setHlsManifestUrl(
+      null
+    );
+  }
+
+  /*
+   * --------------------------------------------------
+   * LOAD PROTECTED HLS MANIFEST
+   * --------------------------------------------------
+   */
+
+  async function loadMedia() {
+    if (
+      !sessionId
+    ) {
+      setError(
+        "Please verify your email before loading media."
+      );
+
+      return;
+    }
+
+    setMediaLoading(
+      true
+    );
+
+    setError(
+      null
+    );
+
+    destroyMediaPlayer();
+
+    try {
+      const response =
+        await fetch(
+          `${API_URL}/share/${SHARE_ID}/media`,
+          {
+            method:
+              "GET",
+
+            headers: {
+              "x-session-id":
+                sessionId,
+            },
+
+            cache:
+              "no-store",
+          }
+        );
 
       /*
-       * Session expired.
+       * ------------------------------------------------
+       * HANDLE SESSION EXPIRY
+       * ------------------------------------------------
        */
+
       if (
-        response.status === 401
+        response.status ===
+        401
       ) {
+        let reason =
+          "Your session has expired";
+
+        try {
+          const data =
+            await response.json();
+
+          reason =
+            data.reason ??
+            data.error ??
+            reason;
+        } catch {
+          // Ignore JSON parsing failure.
+        }
 
         sessionStorage.removeItem(
           `secure-media-session-${SHARE_ID}`
@@ -795,171 +895,275 @@ export default function Home() {
 
         stopTracking();
 
+        throw new Error(
+          reason
+        );
       }
 
+      /*
+       * ------------------------------------------------
+       * HANDLE AUTHORIZATION FAILURE
+       * ------------------------------------------------
+       */
 
-      setResult(
-        data
+      if (
+        !response.ok
+      ) {
+        const contentType =
+          response.headers.get(
+            "content-type"
+          );
+
+        let reason =
+          "Media access denied";
+
+        if (
+          contentType?.includes(
+            "application/json"
+          )
+        ) {
+          const data =
+            await response.json();
+
+          reason =
+            data.reason ??
+            data.error ??
+            reason;
+        } else {
+          const body =
+            await response.text();
+
+          if (
+            body
+          ) {
+            reason =
+              body;
+          }
+        }
+
+        throw new Error(
+          reason
+        );
+      }
+
+      /*
+       * ------------------------------------------------
+       * SUCCESSFUL RESPONSE IS RAW .M3U8 TEXT
+       * ------------------------------------------------
+       */
+
+      const manifestText =
+        await response.text();
+
+      if (
+        !manifestText
+          .trim()
+          .startsWith(
+            "#EXTM3U"
+          )
+      ) {
+        console.error(
+          "Unexpected media response:",
+          manifestText
+        );
+
+        throw new Error(
+          "The server did not return a valid HLS playlist."
+        );
+      }
+
+      /*
+       * Our API returns the manifest itself rather
+       * than exposing a directly accessible manifest
+       * URL.
+       *
+       * Every media segment inside this manifest
+       * already contains its own short-lived signed
+       * CloudFront URL.
+       */
+
+      const manifestBlob =
+        new Blob(
+          [
+            manifestText,
+          ],
+          {
+            type:
+              "application/vnd.apple.mpegurl",
+          }
+        );
+
+      const blobUrl =
+        URL.createObjectURL(
+          manifestBlob
+        );
+
+      manifestBlobUrlRef.current =
+        blobUrl;
+
+      setHlsManifestUrl(
+        blobUrl
       );
-
-    } catch (err) {
-
+    } catch (
+      err
+    ) {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to check access"
+          : "Failed to load protected media"
       );
-
     } finally {
-
-      setLoading(
+      setMediaLoading(
         false
       );
-
     }
-
   }
-
-
-/*
-   * --------------------------------------------------
-   * LOAD MEDIA
-   * --------------------------------------------------
-   */
-
-async function loadMedia() {
-
-  if (!sessionId) {
-
-    setError(
-      "Please verify your email before loading media."
-    );
-
-    return;
-
-  }
-
-
-  setMediaLoading(true);
-  setError(null);
-  setMedia(null);
-
-
-  try {
-
-    const response =
-      await fetch(
-        `${API_URL}/share/${SHARE_ID}/media`,
-        {
-          method:
-            "GET",
-
-          headers: {
-
-            "x-session-id":
-              sessionId,
-
-          },
-
-        }
-      );
-
-
-    const data: MediaResponse =
-      await response.json();
-
-
-    /*
-     * Session expired.
-     */
-    if (
-      response.status === 401
-    ) {
-
-      sessionStorage.removeItem(
-        `secure-media-session-${SHARE_ID}`
-      );
-
-      setSessionId(
-        null
-      );
-
-      setVerificationStep(
-        "email"
-      );
-
-      stopTracking();
-
-      throw new Error(
-        data.reason ??
-        "Your session has expired"
-      );
-
-    }
-
-
-    if (
-      !response.ok ||
-      !data.allowed
-    ) {
-
-      throw new Error(
-        data.reason ??
-        "Media access denied"
-      );
-
-    }
-
-
-    if (!data.media) {
-
-      throw new Error(
-        "Media information was not returned"
-      );
-
-    }
-
-
-    setMedia(
-      data.media
-    );
-
-
-  } catch (err) {
-
-    setError(
-      err instanceof Error
-        ? err.message
-        : "Failed to load media"
-    );
-
-
-  } finally {
-
-    setMediaLoading(
-      false
-    );
-
-  }
-
-}
-
 
   /*
    * --------------------------------------------------
-   * CHANGE EMAIL / LOG OUT
+   * INITIALIZE HLS PLAYER
+   * --------------------------------------------------
+   */
+
+  useEffect(
+    () => {
+      if (
+        !hlsManifestUrl
+      ) {
+        return;
+      }
+
+      const video =
+        videoRef.current;
+
+      if (
+        !video
+      ) {
+        return;
+      }
+
+      /*
+       * Prefer HLS.js when MediaSource
+       * is available.
+       */
+      if (
+        Hls.isSupported()
+      ) {
+        const hls =
+          new Hls({
+            enableWorker:
+              true,
+          });
+
+        hlsRef.current =
+          hls;
+
+        hls.loadSource(
+          hlsManifestUrl
+        );
+
+        hls.attachMedia(
+          video
+        );
+
+        hls.on(
+          Hls.Events.MANIFEST_PARSED,
+          () => {
+            console.log(
+              "Protected HLS manifest loaded"
+            );
+          }
+        );
+
+        hls.on(
+          Hls.Events.ERROR,
+          (
+            _event,
+            data
+          ) => {
+            console.error(
+              "HLS error:",
+              data
+            );
+
+            if (
+              data.fatal
+            ) {
+              switch (
+                data.type
+              ) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  setError(
+                    "The protected video could not be downloaded. The signed media URL may have expired."
+                  );
+
+                  break;
+
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  setError(
+                    "The browser encountered an HLS media playback error."
+                  );
+
+                  break;
+
+                default:
+                  setError(
+                    "The protected video player encountered a fatal error."
+                  );
+              }
+            }
+          }
+        );
+
+        return () => {
+          hls.destroy();
+
+          if (
+            hlsRef.current ===
+            hls
+          ) {
+            hlsRef.current =
+              null;
+          }
+        };
+      }
+
+      /*
+       * Safari/native HLS fallback.
+       */
+      if (
+        video.canPlayType(
+          "application/vnd.apple.mpegurl"
+        )
+      ) {
+        video.src =
+          hlsManifestUrl;
+
+        return;
+      }
+
+      setError(
+        "HLS playback is not supported by this browser."
+      );
+    },
+    [
+      hlsManifestUrl,
+    ]
+  );
+
+  /*
+   * --------------------------------------------------
+   * RESET VERIFICATION / LOGOUT
    * --------------------------------------------------
    */
 
   function resetVerification() {
-
     stopTracking();
-
+    destroyMediaPlayer();
 
     sessionStorage.removeItem(
       `secure-media-session-${SHARE_ID}`
     );
-
 
     setSessionId(
       null
@@ -981,21 +1185,14 @@ async function loadMedia() {
       null
     );
 
-    setMedia(
-      null
-    );
-
     setError(
       null
     );
 
-
     setVerificationStep(
       "email"
     );
-
   }
-
 
   /*
    * --------------------------------------------------
@@ -1003,35 +1200,44 @@ async function loadMedia() {
    * --------------------------------------------------
    */
 
-  useEffect(() => {
+  useEffect(
+    () => {
+      return () => {
+        if (
+          watchId.current !==
+          null
+        ) {
+          navigator.geolocation.clearWatch(
+            watchId.current
+          );
+        }
 
-    return () => {
+        if (
+          heartbeatId.current !==
+          null
+        ) {
+          clearInterval(
+            heartbeatId.current
+          );
+        }
 
-      if (
-        watchId.current !== null
-      ) {
+        if (
+          hlsRef.current
+        ) {
+          hlsRef.current.destroy();
+        }
 
-        navigator.geolocation.clearWatch(
-          watchId.current
-        );
-
-      }
-
-
-      if (
-        heartbeatId.current !== null
-      ) {
-
-        clearInterval(
-          heartbeatId.current
-        );
-
-      }
-
-    };
-
-  }, []);
-
+        if (
+          manifestBlobUrlRef.current
+        ) {
+          URL.revokeObjectURL(
+            manifestBlobUrlRef.current
+          );
+        }
+      };
+    },
+    []
+  );
 
   /*
    * --------------------------------------------------
@@ -1040,10 +1246,8 @@ async function loadMedia() {
    */
 
   return (
-
     <main
       style={{
-
         maxWidth:
           800,
 
@@ -1055,33 +1259,26 @@ async function loadMedia() {
 
         fontFamily:
           "Arial, sans-serif",
-
       }}
     >
-
       <h1>
         Secure Proximity Media
       </h1>
 
-
       <p
         style={{
-
           color:
             "#666",
 
           marginBottom:
             30,
-
         }}
       >
         Email verified browser GPS proximity authorization
       </p>
 
-
       <p
         style={{
-
           fontSize:
             13,
 
@@ -1090,24 +1287,22 @@ async function loadMedia() {
 
           marginTop:
             8,
-
         }}
       >
         Secure context:{" "}
 
-        {isSecureContext === null
+        {isSecureContext ===
+        null
           ? "Checking..."
           : isSecureContext
-          ? "Yes"
-          : "No"}
+            ? "Yes"
+            : "No"}
       </p>
-
 
       {/* EMAIL VERIFICATION */}
 
       <section
         style={{
-
           border:
             "1px solid #ddd",
 
@@ -1119,41 +1314,36 @@ async function loadMedia() {
 
           marginBottom:
             20,
-
         }}
       >
-
         <h2>
           1. Verify Your Email
         </h2>
 
-
         {verificationStep ===
           "email" && (
-
           <>
             <p>
               Enter the email address that received access to this shared media.
             </p>
 
-
             <input
-
               type="email"
-
-              value={email}
-
+              value={
+                email
+              }
               onChange={
-                (event) =>
+                (
+                  event
+                ) =>
                   setEmail(
-                    event.target.value
+                    event
+                      .target
+                      .value
                   )
               }
-
               placeholder="you@example.com"
-
               style={{
-
                 width:
                   "100%",
 
@@ -1168,25 +1358,18 @@ async function loadMedia() {
 
                 marginBottom:
                   12,
-
               }}
-
             />
 
-
             <button
-
               onClick={
                 requestVerificationCode
               }
-
               disabled={
                 verificationLoading ||
                 !email.trim()
               }
-
               style={{
-
                 padding:
                   "12px 20px",
 
@@ -1197,68 +1380,55 @@ async function loadMedia() {
                   verificationLoading
                     ? "not-allowed"
                     : "pointer",
-
               }}
-
             >
-
               {verificationLoading
                 ? "Sending..."
                 : "Send Verification Code"}
-
             </button>
-
           </>
-
         )}
-
 
         {verificationStep ===
           "code" && (
-
           <>
             <p>
-
               Enter the 6-digit verification code.
-
             </p>
-
 
             <p
               style={{
-
                 fontSize:
                   13,
 
                 color:
                   "#777",
-
               }}
             >
-
               Email:{" "}
 
               <strong>
                 {email}
               </strong>
-
             </p>
 
-
             <input
-
               type="text"
-
               inputMode="numeric"
-
-              maxLength={6}
-
-              value={code}
-
+              maxLength={
+                6
+              }
+              value={
+                code
+              }
               onChange={
-                (event) =>
+                (
+                  event
+                ) =>
                   setCode(
-                    event.target.value
+                    event
+                      .target
+                      .value
                       .replace(
                         /\D/g,
                         ""
@@ -1269,11 +1439,8 @@ async function loadMedia() {
                       )
                   )
               }
-
               placeholder="123456"
-
               style={{
-
                 width:
                   "100%",
 
@@ -1291,15 +1458,11 @@ async function loadMedia() {
 
                 marginBottom:
                   12,
-
               }}
-
             />
-
 
             <div
               style={{
-
                 display:
                   "flex",
 
@@ -1308,23 +1471,18 @@ async function loadMedia() {
 
                 flexWrap:
                   "wrap",
-
               }}
             >
-
               <button
-
                 onClick={
                   confirmVerificationCode
                 }
-
                 disabled={
                   verificationLoading ||
-                  code.length !== 6
+                  code.length !==
+                    6
                 }
-
                 style={{
-
                   padding:
                     "12px 20px",
 
@@ -1335,23 +1493,16 @@ async function loadMedia() {
                     verificationLoading
                       ? "not-allowed"
                       : "pointer",
-
                 }}
-
               >
-
                 {verificationLoading
                   ? "Verifying..."
                   : "Verify Code"}
-
               </button>
 
-
               <button
-
                 onClick={
                   () => {
-
                     setCode(
                       ""
                     );
@@ -1359,16 +1510,12 @@ async function loadMedia() {
                     setVerificationStep(
                       "email"
                     );
-
                   }
                 }
-
                 disabled={
                   verificationLoading
                 }
-
                 style={{
-
                   padding:
                     "12px 20px",
 
@@ -1377,321 +1524,57 @@ async function loadMedia() {
 
                   cursor:
                     "pointer",
-
                 }}
-
               >
-
                 Change Email
-
               </button>
-
             </div>
-
           </>
-
         )}
-
 
         {verificationStep ===
           "verified" && (
-
           <>
-
             <p>
-
               <strong>
                 ✅ Email verified
               </strong>
-
             </p>
-
 
             <p
               style={{
-
                 fontSize:
                   13,
 
                 color:
                   "#777",
-
               }}
             >
-
               Your verified session is active.
-
             </p>
 
-
             <button
-
               onClick={
                 resetVerification
               }
-
               style={{
-
                 padding:
                   "10px 16px",
 
                 cursor:
                   "pointer",
-
               }}
-
             >
-
               Use Different Email
-
             </button>
-
           </>
-
         )}
-
       </section>
-
 
       {/* GPS */}
 
       <section
         style={{
-
-          border:
-            "1px solid #ddd",
-
-          borderRadius:
-            8,
-
-          padding:
-            20,
-
-          marginBottom:
-            20,
-
-          opacity:
-            verificationStep === "verified"
-              ? 1
-              : 0.6,
-
-        }}
-      >
-
-        <h2>
-          2. Location
-        </h2>
-
-
-        {verificationStep !==
-          "verified" && (
-
-          <p
-            style={{
-              color:
-                "#777"
-            }}
-          >
-
-            Verify your email before starting location tracking.
-
-          </p>
-
-        )}
-
-
-        {!tracking ? (
-
-          <button
-
-            onClick={
-              startTracking
-            }
-
-            disabled={
-              verificationStep !==
-              "verified"
-            }
-
-            style={{
-
-              padding:
-                "12px 20px",
-
-              fontSize:
-                16,
-
-              cursor:
-                verificationStep ===
-                "verified"
-                  ? "pointer"
-                  : "not-allowed",
-
-            }}
-
-          >
-
-            📍 Start Location Tracking
-
-          </button>
-
-        ) : (
-
-          <button
-
-            onClick={
-              stopTracking
-            }
-
-            style={{
-
-              padding:
-                "12px 20px",
-
-              fontSize:
-                16,
-
-              cursor:
-                "pointer",
-
-            }}
-
-          >
-
-            ⛔ Stop Location Tracking
-
-          </button>
-
-        )}
-
-
-        <div
-          style={{
-            marginTop:
-              20
-          }}
-        >
-
-          <p>
-
-            Status:{" "}
-
-            <strong>
-
-              {tracking
-                ? "🟢 Tracking"
-                : "⚪ Not tracking"}
-
-            </strong>
-
-          </p>
-
-
-          {location ? (
-
-            <div
-              style={{
-
-                background:
-                  "#f5f5f5",
-
-                padding:
-                  15,
-
-                borderRadius:
-                  6,
-
-              }}
-            >
-
-              <p>
-
-                <strong>
-                  Latitude:
-                </strong>{" "}
-
-                {location.latitude.toFixed(
-                  6
-                )}
-
-              </p>
-
-
-              <p>
-
-                <strong>
-                  Longitude:
-                </strong>{" "}
-
-                {location.longitude.toFixed(
-                  6
-                )}
-
-              </p>
-
-
-              <p>
-
-                <strong>
-                  Accuracy:
-                </strong>{" "}
-
-                {Math.round(
-                  location.accuracy
-                )}{" "}
-
-                meters
-
-              </p>
-
-
-              <p
-                style={{
-
-                  fontSize:
-                    12,
-
-                  color:
-                    "#777",
-
-                }}
-              >
-
-                Last update:{" "}
-
-                {new Date(
-                  location.timestamp
-                ).toLocaleTimeString()}
-
-              </p>
-
-            </div>
-
-          ) : (
-
-            <p
-              style={{
-                color:
-                  "#777"
-              }}
-            >
-
-              No location received yet.
-
-            </p>
-
-          )}
-
-        </div>
-
-      </section>
-
-
-      {/* AUTHORIZATION */}
-
-      <section
-        style={{
-
           border:
             "1px solid #ddd",
 
@@ -1709,29 +1592,195 @@ async function loadMedia() {
             "verified"
               ? 1
               : 0.6,
-
         }}
       >
+        <h2>
+          2. Location
+        </h2>
 
+        {verificationStep !==
+          "verified" && (
+          <p
+            style={{
+              color:
+                "#777",
+            }}
+          >
+            Verify your email before starting location tracking.
+          </p>
+        )}
+
+        {!tracking ? (
+          <button
+            onClick={
+              startTracking
+            }
+            disabled={
+              verificationStep !==
+              "verified"
+            }
+            style={{
+              padding:
+                "12px 20px",
+
+              fontSize:
+                16,
+
+              cursor:
+                verificationStep ===
+                "verified"
+                  ? "pointer"
+                  : "not-allowed",
+            }}
+          >
+            📍 Start Location Tracking
+          </button>
+        ) : (
+          <button
+            onClick={
+              stopTracking
+            }
+            style={{
+              padding:
+                "12px 20px",
+
+              fontSize:
+                16,
+
+              cursor:
+                "pointer",
+            }}
+          >
+            ⛔ Stop Location Tracking
+          </button>
+        )}
+
+        <div
+          style={{
+            marginTop:
+              20,
+          }}
+        >
+          <p>
+            Status:{" "}
+
+            <strong>
+              {tracking
+                ? "🟢 Tracking"
+                : "⚪ Not tracking"}
+            </strong>
+          </p>
+
+          {location ? (
+            <div
+              style={{
+                background:
+                  "#f5f5f5",
+
+                padding:
+                  15,
+
+                borderRadius:
+                  6,
+              }}
+            >
+              <p>
+                <strong>
+                  Latitude:
+                </strong>{" "}
+
+                {location.latitude.toFixed(
+                  6
+                )}
+              </p>
+
+              <p>
+                <strong>
+                  Longitude:
+                </strong>{" "}
+
+                {location.longitude.toFixed(
+                  6
+                )}
+              </p>
+
+              <p>
+                <strong>
+                  Accuracy:
+                </strong>{" "}
+
+                {Math.round(
+                  location.accuracy
+                )}{" "}
+                meters
+              </p>
+
+              <p
+                style={{
+                  fontSize:
+                    12,
+
+                  color:
+                    "#777",
+                }}
+              >
+                Last update:{" "}
+
+                {new Date(
+                  location.timestamp
+                ).toLocaleTimeString()}
+              </p>
+            </div>
+          ) : (
+            <p
+              style={{
+                color:
+                  "#777",
+              }}
+            >
+              No location received yet.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* AUTHORIZATION */}
+
+      <section
+        style={{
+          border:
+            "1px solid #ddd",
+
+          borderRadius:
+            8,
+
+          padding:
+            20,
+
+          marginBottom:
+            20,
+
+          opacity:
+            verificationStep ===
+            "verified"
+              ? 1
+              : 0.6,
+        }}
+      >
         <h2>
           3. Access
         </h2>
 
-
         <button
-
           onClick={
             checkAccess
           }
-
           disabled={
             loading ||
             verificationStep !==
               "verified"
           }
-
           style={{
-
             padding:
               "12px 20px",
 
@@ -1744,32 +1793,23 @@ async function loadMedia() {
                 "verified"
                 ? "not-allowed"
                 : "pointer",
-
           }}
-
         >
-
           {loading
             ? "Checking..."
             : "Check Media Access"}
-
         </button>
 
         {result?.allowed && (
-
           <button
-
             onClick={
               loadMedia
             }
-
             disabled={
               mediaLoading ||
               !sessionId
             }
-
             style={{
-
               padding:
                 "12px 20px",
 
@@ -1783,29 +1823,20 @@ async function loadMedia() {
                 mediaLoading
                   ? "not-allowed"
                   : "pointer",
-
             }}
-
           >
-
             {mediaLoading
               ? "Loading Media..."
               : "Open Protected Media"}
-
           </button>
-
         )}
-
       </section>
-
 
       {/* ERROR */}
 
       {error && (
-
         <section
           style={{
-
             padding:
               20,
 
@@ -1820,10 +1851,8 @@ async function loadMedia() {
 
             border:
               "1px solid #cc6666",
-
           }}
         >
-
           <h3>
             ❌ Error
           </h3>
@@ -1831,19 +1860,14 @@ async function loadMedia() {
           <p>
             {error}
           </p>
-
         </section>
-
       )}
 
-
-      {/* RESULT */}
+      {/* ACCESS RESULT */}
 
       {result && (
-
         <section
           style={{
-
             padding:
               20,
 
@@ -1859,35 +1883,25 @@ async function loadMedia() {
               result.allowed
                 ? "1px solid #66aa66"
                 : "1px solid #cc6666",
-
           }}
         >
-
           <h2>
-
             {result.allowed
               ? "✅ Access Allowed"
               : "❌ Access Denied"}
-
           </h2>
 
-
           <p>
-
             <strong>
               Reason:
             </strong>{" "}
 
             {result.reason}
-
           </p>
-
 
           {typeof result.distanceMeters ===
             "number" && (
-
             <p>
-
               <strong>
                 Distance:
               </strong>{" "}
@@ -1895,25 +1909,17 @@ async function loadMedia() {
               {Math.round(
                 result.distanceMeters
               )}{" "}
-
               meters
-
             </p>
-
           )}
-
         </section>
-
       )}
 
+      {/* PROTECTED HLS MEDIA */}
 
-      {/* PROTECTED MEDIA */}
-
-      {media && (
-
+      {hlsManifestUrl && (
         <section
           style={{
-
             padding:
               20,
 
@@ -1925,127 +1931,49 @@ async function loadMedia() {
 
             borderRadius:
               8,
-
           }}
         >
-
           <h2>
             🔒 Protected Media
           </h2>
 
+          <p
+            style={{
+              fontSize:
+                13,
 
-          <p>
-
-            <strong>
-              File:
-            </strong>{" "}
-
-            {media.filename}
-
+              color:
+                "#777",
+            }}
+          >
+            Protected HLS stream delivered through signed CloudFront segment URLs.
           </p>
 
+          <video
+            ref={
+              videoRef
+            }
+            controls
+            playsInline
+            crossOrigin="anonymous"
+            style={{
+              width:
+                "100%",
 
-          <p>
+              maxHeight:
+                500,
 
-            <strong>
-              Type:
-            </strong>{" "}
-
-            {media.mediaType}
-
-          </p>
-
-
-          {media.mediaType.startsWith(
-            "video/"
-          ) && (
-
-            <video
-
-              src={
-                media.url
-              }
-
-              controls
-
-              playsInline
-
-              style={{
-
-                width:
-                  "100%",
-
-                maxHeight:
-                  500,
-
-                background:
-                  "#000",
-
-              }}
-
-            />
-
-          )}
-
-
-          {media.mediaType.startsWith(
-            "image/"
-          ) && (
-
-            <img
-
-              src={
-                media.url
-              }
-
-              alt={
-                media.filename
-              }
-
-              style={{
-
-                width:
-                  "100%",
-
-                maxHeight:
-                  600,
-
-                objectFit:
-                  "contain",
-
-              }}
-
-            />
-
-          )}
-
-
-          {!media.mediaType.startsWith(
-            "video/"
-          ) &&
-            !media.mediaType.startsWith(
-              "image/"
-            ) && (
-
-            <p>
-
-              Preview is not currently
-              supported for this media type.
-
-            </p>
-
-          )}
-
+              background:
+                "#000",
+            }}
+          />
         </section>
-
       )}
-
 
       {/* SYSTEM INFORMATION */}
 
       <section
         style={{
-
           marginTop:
             30,
 
@@ -2060,50 +1988,44 @@ async function loadMedia() {
 
           fontSize:
             13,
-
         }}
       >
-
         <h3>
           Current MVP configuration
         </h3>
-
 
         <p>
           Share: {SHARE_ID}
         </p>
 
-
         <p>
           Identity: Email verification
         </p>
-
 
         <p>
           Session: Redis verified session
         </p>
 
-
         <p>
-          Location heartbeat:
-          10 seconds
+          Location heartbeat: 10 seconds
         </p>
 
-
         <p>
-          Presence TTL:
-          120 seconds
+          Presence TTL: 120 seconds
         </p>
 
-
         <p>
-          Session TTL:
-          1 hour
+          Session TTL: 1 hour
         </p>
 
+        <p>
+          Media delivery: Protected HLS
+        </p>
+
+        <p>
+          CDN: CloudFront signed segment URLs
+        </p>
       </section>
-
     </main>
-
   );
 }
