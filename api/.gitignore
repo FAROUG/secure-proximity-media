@@ -4,3 +4,10 @@ dist
 certs/
 cloudfront-keys/
 *.pem
+# Local environment overrides
+.env.*
+!.env.example
+
+# Local environment overrides
+.env.*
+!.env.example

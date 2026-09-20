@@ -21,8 +21,14 @@ import {
   createPendingMediaUpload,
   getMediaById,
   markMediaUploaded,
-  getShareMedia
+  getShareMedia,
+  retryFailedMedia
 } from "./repositories/media.js";
+
+import {
+  createMediaUploadUrl,
+  getUploadedMediaMetadata
+} from "./storage/s3.js";
 
 import {
   connectRedis,
@@ -44,18 +50,44 @@ import {
 } from "./repositories/sessions.js";
 
 import {
+  createOwnerVerificationCode,
+  verifyOwnerCode
+} from "./repositories/owner-verification.js";
+
+import {
+  createOwnerSession
+} from "./repositories/sessions.js";
+
+import {
   getVerifiedUser
 } from "./authentication.js";
 
-
-import { createOwnerVerificationCode, verifyOwnerCode } from "./repositories/owner-verification.js";
-import { createOwnerSession } from "./repositories/sessions.js";
-
 import crypto from "crypto";
-import { getAuthenticatedOwner } from "./owner-authentication.js";
-import { createMediaUploadUrl, getUploadedMediaMetadata } from "./storage/s3.js";
+
+import {
+  getAuthenticatedOwner
+} from "./owner-authentication.js";
 
 const app = express();
+
+
+/*
+ * --------------------------------------------------
+ * TEMPORARY HLS TEST CONFIGURATION
+ * --------------------------------------------------
+ *
+ * For the current HLS test we are using one
+ * manually generated HLS package.
+ *
+ * Later this will NOT be hardcoded.
+ *
+ * The upload/transcoding pipeline will store:
+ *
+ * media.storage_key =
+ * media/<media-id>/hls/master.m3u8
+ *
+ * and we will use media.storage_key directly.
+ */
 
 
 app.use(
@@ -477,6 +509,126 @@ app.post(
 
       return res.status(500).json({
         error: "Failed to complete media upload"
+      });
+    }
+  }
+);
+
+
+/*
+ * --------------------------------------------------
+ * MEDIA PROCESSING - RETRY FAILED UPLOAD
+ * --------------------------------------------------
+ */
+app.post(
+  "/media/:mediaId/retry",
+  async (req, res) => {
+    try {
+      const owner = await getAuthenticatedOwner(req);
+
+      if (!owner) {
+        return res.status(401).json({
+          error: "Owner authentication required"
+        });
+      }
+
+      const { mediaId } = req.params;
+
+      if (
+        typeof mediaId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          mediaId
+        )
+      ) {
+        return res.status(400).json({
+          error: "Invalid media ID"
+        });
+      }
+
+      const media = await getMediaById(mediaId);
+
+      /*
+       * Do not reveal whether another owner's
+       * media exists.
+       */
+      if (!media || media.owner_id !== owner.userId) {
+        return res.status(404).json({
+          error: "Media not found"
+        });
+      }
+
+      if (media.processing_status !== "FAILED") {
+        return res.status(409).json({
+          error: "Only failed media can be retried"
+        });
+      }
+
+      if (!media.original_storage_key) {
+        return res.status(409).json({
+          error: "Original storage key is missing"
+        });
+      }
+
+      /*
+       * Verify that the original file still exists
+       * and matches the recorded media type.
+       */
+      let metadata: Awaited<
+        ReturnType<typeof getUploadedMediaMetadata>
+      >;
+
+      try {
+        metadata = await getUploadedMediaMetadata(
+          media.original_storage_key
+        );
+      } catch (error) {
+        console.error(
+          "Media retry S3 verification error:",
+          error
+        );
+
+        return res.status(409).json({
+          error: "Original media could not be verified"
+        });
+      }
+
+      if (
+        metadata.contentType !== media.media_type ||
+        !metadata.contentLength ||
+        metadata.contentLength <= 0
+      ) {
+        return res.status(409).json({
+          error: "Original media metadata is invalid"
+        });
+      }
+
+      /*
+       * The repository performs an atomic, owner-scoped
+       * FAILED -> UPLOADED transition.
+       */
+      const updatedMedia = await retryFailedMedia(
+        media.id,
+        owner.userId
+      );
+
+      if (!updatedMedia) {
+        return res.status(409).json({
+          error: "Media is no longer eligible for retry"
+        });
+      }
+
+      return res.status(200).json({
+        mediaId: updatedMedia.id,
+        processingStatus: updatedMedia.processing_status
+      });
+    } catch (error) {
+      console.error(
+        "Media processing retry error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: "Failed to retry media processing"
       });
     }
   }
@@ -1168,7 +1320,13 @@ app.post(
  *    short-lived CloudFront signed URLs.
  * 7. Returns the protected HLS manifest.
  *
- * Uses the processed manifest stored on READY media.
+ * TEMPORARY:
+ *
+ * The HLS manifest S3 key is currently hardcoded.
+ *
+ * Later TEST_HLS_MANIFEST_KEY will be replaced by:
+ *
+ * media.storage_key
  */
 app.get(
   "/share/:shareId/media",
@@ -1236,7 +1394,9 @@ app.get(
        * FETCH SHARE MEDIA
        * --------------------------------------------------
        *
-       * Validate that this share references valid media.
+       * Even though the HLS key is temporarily
+       * hardcoded, we still validate that this
+       * share references valid media.
        */
       const media =
         await getShareMedia(
@@ -1403,7 +1563,13 @@ app.get(
        * Each .ts segment inside the returned manifest
        * receives a short-lived CloudFront signed URL.
        *
-       * Uses the processed manifest for this media record.
+       * Current test key:
+       *
+       * demo/hls/test-video/master.m3u8
+       *
+       * Later:
+       *
+       * media.storage_key
        */
       const signedManifest =
         await createSignedHlsManifest(

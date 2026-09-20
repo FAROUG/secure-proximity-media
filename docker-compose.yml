@@ -13,9 +13,6 @@ services:
       - postgres_data:/var/lib/postgresql
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
   media-worker:
-    build:
-      context: ./api
-      dockerfile: Dockerfile.worker
     image: secure-media-worker:local
     container_name: secure-media-worker
     restart: unless-stopped
@@ -48,3 +45,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+# 88281dfda3df32295fab1a30bd071a7a9845323f2b1aff8005cdd1c0319b9983

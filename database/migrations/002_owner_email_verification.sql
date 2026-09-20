@@ -21,3 +21,5 @@ ON owner_email_verification_codes (
     user_id,
     created_at DESC
 );
+
+-- 275fe94d6a7e522166ddcf74ae8720149ffa3499c4cd55f8eeb787474851d813
