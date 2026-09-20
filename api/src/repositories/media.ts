@@ -70,6 +70,7 @@ export interface ShareMedia {
   filename: string;
   storage_key: string | null;
   media_type: string;
+  processing_status: MediaProcessingStatus;
 }
 
 export async function getShareMedia(
@@ -83,7 +84,8 @@ export async function getShareMedia(
         m.owner_id,
         m.filename,
         m.storage_key,
-        m.media_type
+        m.media_type,
+        m.processing_status
       FROM shares s
       INNER JOIN media m
         ON m.id = s.media_id

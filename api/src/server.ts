@@ -48,27 +48,6 @@ import {
 const app = express();
 
 
-/*
- * --------------------------------------------------
- * TEMPORARY HLS TEST CONFIGURATION
- * --------------------------------------------------
- *
- * For the current HLS test we are using one
- * manually generated HLS package.
- *
- * Later this will NOT be hardcoded.
- *
- * The upload/transcoding pipeline will store:
- *
- * media.storage_key =
- * media/<media-id>/hls/master.m3u8
- *
- * and we will use media.storage_key directly.
- */
-const TEST_HLS_MANIFEST_KEY =
-  "demo/hls/test-video/master.m3u8";
-
-
 app.use(
   cors()
 );
@@ -781,13 +760,7 @@ app.post(
  *    short-lived CloudFront signed URLs.
  * 7. Returns the protected HLS manifest.
  *
- * TEMPORARY:
- *
- * The HLS manifest S3 key is currently hardcoded.
- *
- * Later TEST_HLS_MANIFEST_KEY will be replaced by:
- *
- * media.storage_key
+ * Uses the processed manifest stored on READY media.
  */
 app.get(
   "/share/:shareId/media",
@@ -855,9 +828,7 @@ app.get(
        * FETCH SHARE MEDIA
        * --------------------------------------------------
        *
-       * Even though the HLS key is temporarily
-       * hardcoded, we still validate that this
-       * share references valid media.
+       * Validate that this share references valid media.
        */
       const media =
         await getShareMedia(
@@ -875,6 +846,15 @@ app.get(
 
       }
 
+      if (
+        media.processing_status !== "READY" ||
+        !media.storage_key
+      ) {
+        return res.status(409).json({
+          allowed: false,
+          reason: "Media is not ready for playback"
+        });
+      }
 
       /*
        * --------------------------------------------------
@@ -888,7 +868,7 @@ app.get(
 
         const signedManifest =
           await createSignedHlsManifest(
-            TEST_HLS_MANIFEST_KEY,
+            media.storage_key,
             600
           );
 
@@ -1015,17 +995,11 @@ app.get(
        * Each .ts segment inside the returned manifest
        * receives a short-lived CloudFront signed URL.
        *
-       * Current test key:
-       *
-       * demo/hls/test-video/master.m3u8
-       *
-       * Later:
-       *
-       * media.storage_key
+       * Uses the processed manifest for this media record.
        */
       const signedManifest =
         await createSignedHlsManifest(
-          TEST_HLS_MANIFEST_KEY,
+          media.storage_key,
           90
         );
 
