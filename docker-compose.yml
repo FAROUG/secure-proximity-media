@@ -12,7 +12,30 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
-
+  media-worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.worker
+    image: secure-media-worker:local
+    container_name: secure-media-worker
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    depends_on:
+      - postgres
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: secure_media
+      DB_USER: secure_media
+      DB_PASSWORD: secure_media_password
+      AWS_PROFILE: personal
+      AWS_REGION: ap-southeast-2
+      AWS_SHARED_CREDENTIALS_FILE: /home/node/.aws/credentials
+      AWS_CONFIG_FILE: /home/node/.aws/config
+      MEDIA_BUCKET_NAME: secure-proximity-media-dev-sharing-001
+    volumes:
+      - ${HOME}/.aws:/home/node/.aws:ro
   redis:
     image: redis:8
     container_name: secure-media-redis
