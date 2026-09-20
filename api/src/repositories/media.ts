@@ -1,11 +1,21 @@
 import { query } from "../db.js";
 
+export type MediaProcessingStatus =
+  | "PENDING_UPLOAD"
+  | "UPLOADED"
+  | "PROCESSING"
+  | "READY"
+  | "FAILED";
+
 export interface Media {
   id: string;
   owner_id: string;
   filename: string;
   storage_key: string | null;
+  original_storage_key: string | null;
   media_type: string;
+  processing_status: MediaProcessingStatus;
+  processing_error: string | null;
   created_at: Date;
 }
 

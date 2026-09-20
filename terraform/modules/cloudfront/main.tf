@@ -24,9 +24,41 @@ data "aws_cloudfront_cache_policy" "caching_optimized" {
   name = "Managed-CachingOptimized"
 }
 
+resource "aws_cloudfront_response_headers_policy" "media_cors" {
+  name = "${var.name}-${var.environment}-media-cors"
 
-data "aws_cloudfront_response_headers_policy" "cors" {
-  name = "Managed-SimpleCORS"
+  cors_config {
+    access_control_allow_credentials = false
+
+    access_control_allow_headers {
+      items = ["*"]
+    }
+
+    access_control_allow_methods {
+      items = [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ]
+    }
+
+    access_control_allow_origins {
+      items = ["*"]
+    }
+
+    access_control_expose_headers {
+      items = [
+        "Accept-Ranges",
+        "Content-Length",
+        "Content-Range",
+        "ETag"
+      ]
+    }
+
+    access_control_max_age_sec = 3600
+
+    origin_override = true
+  }
 }
 
 
@@ -46,7 +78,8 @@ resource "aws_cloudfront_distribution" "media" {
 
     allowed_methods = [
       "GET",
-      "HEAD"
+      "HEAD",
+      "OPTIONS"
     ]
 
     cached_methods = [
@@ -58,7 +91,7 @@ resource "aws_cloudfront_distribution" "media" {
 
     cache_policy_id = data.aws_cloudfront_cache_policy.caching_optimized.id
 
-    response_headers_policy_id = data.aws_cloudfront_response_headers_policy.cors.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.media_cors.id
 
     trusted_key_groups = [
       var.trusted_key_group_id
